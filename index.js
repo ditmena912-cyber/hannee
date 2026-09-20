@@ -15,18 +15,15 @@ function isTargetBoss(bossName) {
   return keywords.some(kw => nameLower.includes(kw));
 }
 
-// Hàm tính toán thời gian tiếp theo (Cộng 15 phút, tùy chọn cộng thêm 7 phút 30 giây)
+// Hàm tính toán thời gian tiếp theo
 function calculateNextTime(timeStr, isSupport = false) {
   try {
-    // timeStr thường có dạng "2026-09-21 01:50:23" hoặc tương tự
     const date = new Date(timeStr.replace(/-/g, '/'));
     if (isNaN(date.getTime())) return "Không xác định";
 
-    // Mặc định cộng 15 phút tròn
     let addMinutes = 15;
     let addSeconds = 0;
 
-    // Nếu là thời gian hỗ trợ: cộng thêm 7 phút 30 giây
     if (isSupport) {
       addMinutes += 7;
       addSeconds += 30;
@@ -35,28 +32,18 @@ function calculateNextTime(timeStr, isSupport = false) {
     date.setMinutes(date.getMinutes() + addMinutes);
     date.setSeconds(date.getSeconds() + addSeconds);
 
-    // Format lại thành YYYY-MM-DD HH:mm:ss
     const pad = (n) => String(n).padStart(2, '0');
-    const year = date.getFullYear();
-    const month = pad(date.getMonth() + 1);
-    const day = pad(date.getDate());
-    const hours = pad(date.getHours());
-    const minutes = pad(date.getMinutes());
-    const seconds = pad(date.getSeconds());
-
-    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
   } catch (e) {
     return "Không xác định";
   }
 }
 
-// Hàm trích xuất thông tin Boss, Map và Thời gian
 function extractInfo(item) {
   let bossName = item.bossName || "Chưa rõ";
-
-  // Bóc tách Tên Map từ item.value
   let mapName = "Chưa rõ";
   const textValue = item.value || "";
+  
   if (textValue) {
     const matchMap = textValue.match(/tại\s+([^,.\n\r]+)/i);
     if (matchMap && matchMap[1]) {
@@ -67,20 +54,21 @@ function extractInfo(item) {
   const serverName = item.server || "15 sao";
   const timeStr = item.time || new Date().toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" });
 
-  // Tính thời gian lần tiếp theo (+15 phút)
   const nextSpawnTime = calculateNextTime(timeStr, false);
-  const nextSupportSpawnTime = calculateNextTime(timeStr, true); // Trường hợp tính thêm 7 phút 30 giây hỗ trợ
+  const nextSupportSpawnTime = calculateNextTime(timeStr, true);
 
   return { bossName, mapName, serverName, timeStr, nextSpawnTime, nextSupportSpawnTime };
 }
 
 async function sendDiscordEmbed(item) {
   const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
-  if (!webhookUrl) return;
+  if (!webhookUrl) {
+    console.error("Chưa cấu hình Webhook URL!");
+    return;
+  }
 
   const info = extractInfo(item);
 
-  // Chỉ gửi nếu đúng là Boss Tiểu đội sát thủ theo yêu cầu
   if (!isTargetBoss(info.bossName)) {
     return;
   }
@@ -107,7 +95,7 @@ async function sendDiscordEmbed(item) {
 
   try {
     await axios.post(webhookUrl, payload);
-    console.log(`[Discord] Đã gửi thông báo Boss: ${info.bossName} | Map: ${info.mapName}`);
+    console.log(`[Discord Test/Send] Đã gửi thông báo Boss: ${info.bossName} | Map: ${info.mapName}`);
   } catch (err) {
     console.error("[Discord Error] Lỗi khi gửi webhook:", err.message);
   }
@@ -116,16 +104,8 @@ async function sendDiscordEmbed(item) {
 async function fetchBossApi() {
   try {
     const response = await axios.get('https://service.dungpham.com.vn/api/thong-bao', {
-      params: {
-        server: '15 sao',
-        category: 'BOSS',
-        size: 100,
-        sort: 'id,desc'
-      },
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Accept': 'application/json'
-      },
+      params: { server: '15 sao', category: 'BOSS', size: 100, sort: 'id,desc' },
+      headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' },
       timeout: 10000
     });
 
@@ -169,8 +149,21 @@ async function fetchBossApi() {
 
 setInterval(fetchBossApi, 5000);
 
+// Endpoint chính giữ bot sống
 app.get('/', (req, res) => {
   res.send('Boss Monitor Service is running...');
+});
+
+// Endpoint TEST NHANH: Truy cập link https://<tên-app>.onrender.com/test-boss để bot gửi tin nhắn thử nghiệm ngay lập tức
+app.get('/test-boss', async (req, res) => {
+  const dummyItem = {
+    bossName: "Tiểu đội trưởng",
+    value: "BOSS Tiểu đội trưởng vừa xuất hiện tại Hang khỉ đen",
+    server: "15 sao",
+    time: "2026-09-21 01:50:23"
+  };
+  await sendDiscordEmbed(dummyItem);
+  res.send('Đã gửi tin nhắn test boss Tiểu đội trưởng lên Discord thành công! Kiểm tra lại kênh Discord của bạn nhé.');
 });
 
 const PORT = process.env.PORT || 3000;
