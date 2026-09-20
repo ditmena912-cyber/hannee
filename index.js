@@ -7,58 +7,26 @@ app.use(express.json());
 let isBaselineLoaded = false;
 const processedIds = new Set();
 
-// Hàm trích xuất thông tin Boss và Map cực kỳ linh hoạt
+// Hàm trích xuất thông tin Boss và Map chính xác từ cấu trúc API Dũng Phạm
 function extractInfo(item) {
-  // 1. Trích xuất Tên Boss
-  let bossName = item.bossName || item.boss || item.name || item.boss_name || "";
+  // 1. Tên Boss
+  let bossName = item.bossName || "Chưa rõ";
 
-  // 2. Trích xuất Tên Map từ thuộc tính API
-  let mapName = item.mapName || item.map || item.map_name || item.location || item.zone || item.mapTitle || item.map_title || item.area || "";
+  // 2. Tên Map (Bóc tách từ chuỗi item.value)
+  let mapName = "Chưa rõ";
+  const textValue = item.value || "";
 
-  // Nếu mapName là một Object (VD: { id: 1, name: "Hang khỉ đen" })
-  if (typeof mapName === 'object' && mapName !== null) {
-    mapName = mapName.name || mapName.title || mapName.label || "";
-  }
-
-  // Quét toàn bộ các Key trong item nếu vẫn chưa tìm thấy Map
-  if (!mapName) {
-    for (const key in item) {
-      if (key.toLowerCase().includes('map') || key.toLowerCase().includes('location') || key.toLowerCase().includes('zone')) {
-        if (typeof item[key] === 'string' && item[key].trim() !== '') {
-          mapName = item[key];
-          break;
-        } else if (typeof item[key] === 'object' && item[key] !== null) {
-          mapName = item[key].name || item[key].title || item[key].label || "";
-          if (mapName) break;
-        }
-      }
+  if (textValue) {
+    // Regex tìm chữ đứng sau "tại " cho đến hết câu hoặc các từ khóa nối tiếp
+    const matchMap = textValue.match(/tại\s+([^,.\n\r]+)/i);
+    if (matchMap && matchMap[1]) {
+      mapName = matchMap[1].trim();
     }
   }
 
-  // 3. Nếu vẫn chưa thấy, bóc tách Regex từ chuỗi văn bản thông báo
-  const fullText = (item.content || item.title || item.message || item.description || "").trim();
-
-  if (fullText) {
-    if (!bossName) {
-      const bossMatch = fullText.match(/Boss\s*:\s*([^\n\r]+)/i) ||
-                        fullText.match(/(?:Boss|boss)\s*[:\s]\s*([A-Za-z0-9\sàáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđĐ]+?)(?=\s+vừa|\s+xuất|\s+tại|\s+ở|\n|$)/i);
-      if (bossMatch && bossMatch[1]) bossName = bossMatch[1].trim();
-    }
-
-    if (!mapName) {
-      const mapMatch = fullText.match(/Map\s*:\s*([^\n\r]+)/i) ||
-                       fullText.match(/(?:Map|map)\s*[:\s]\s*([A-Za-z0-9\sàáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđĐ]+?)(?=\s+khu|\s+server|\s+máy chủ|\n|$)/i) ||
-                       fullText.match(/(?:tại|ở)\s+([A-Za-z0-9\sàáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđĐ]+?)(?=\s+khu|\s+server|\s+máy chủ|\n|$)/i);
-      if (mapMatch && mapMatch[1]) mapName = mapMatch[1].trim();
-    }
-  }
-
-  // Chuẩn hóa kết quả
-  if (!bossName) bossName = "Chưa rõ";
-  if (!mapName) mapName = "Chưa rõ";
-
+  // 3. Máy chủ & Thời gian
   const serverName = item.server || "15 sao";
-  const timeStr = item.time || item.createdAt || new Date().toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" });
+  const timeStr = item.time || new Date().toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" });
 
   return { bossName, mapName, serverName, timeStr };
 }
@@ -114,14 +82,9 @@ async function fetchBossApi() {
     const dataList = Array.isArray(response.data) ? response.data : (response.data.content || []);
     if (!Array.isArray(dataList)) return;
 
-    // In cấu trúc dữ liệu lên Render Log để tiện theo dõi
-    if (dataList.length > 0 && !isBaselineLoaded) {
-      console.log("[DEBUG API ITEM]:", JSON.stringify(dataList[0]));
-    }
-
     if (!isBaselineLoaded) {
       dataList.forEach(item => {
-        const id = item.id || `${item.bossName || item.title}_${item.time || item.createdAt}`;
+        const id = item.id || `${item.bossName}_${item.time}`;
         processedIds.add(id);
       });
       isBaselineLoaded = true;
@@ -131,7 +94,7 @@ async function fetchBossApi() {
 
     const newItems = [];
     for (const item of dataList) {
-      const id = item.id || `${item.bossName || item.title}_${item.time || item.createdAt}`;
+      const id = item.id || `${item.bossName}_${item.time}`;
       const isServer15 = !item.server || String(item.server).includes('15');
 
       if (!processedIds.has(id) && isServer15) {
