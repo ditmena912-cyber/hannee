@@ -7,7 +7,7 @@ app.use(express.json());
 let isBaselineLoaded = false;
 const processedIds = new Set();
 
-let lastNumberFourItem = null; // Lưu lại toàn bộ item của Số 4 gần nhất
+let lastNumberFourItem = null;
 
 // Kiểm tra nhóm Boss Tiểu đội sát thủ
 function isTargetBoss(bossName) {
@@ -38,7 +38,7 @@ function calculateNextTime(timeStr, addMins, addSecs = 0) {
     date.setSeconds(date.getSeconds() + addSecs);
 
     const pad = (n) => String(n).padStart(2, '0');
-    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
   } catch (e) {
     return "Không xác định";
   }
@@ -59,7 +59,6 @@ function extractInfo(item) {
   const serverName = item.server || "15 sao";
   const timeStr = item.time || new Date().toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" });
 
-  // Nếu là Số 4, lưu lại thông tin để làm mốc tính toán cuối chuỗi
   if (isNumberFour(bossName)) {
     lastNumberFourItem = { bossName, mapName, serverName, timeStr };
   }
@@ -69,7 +68,7 @@ function extractInfo(item) {
   return { bossName, mapName, serverName, timeStr, supportSpawnTime };
 }
 
-// Gửi tin nhắn Embed thông báo Boss (Thông thường - không có dự kiến)
+// Gửi tin nhắn Embed thông báo Boss (Có icon sinh động, nền màu đỏ cam bắt mắt)
 async function sendDiscordEmbed(item) {
   const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
   if (!webhookUrl) return;
@@ -85,17 +84,17 @@ async function sendDiscordEmbed(item) {
     avatar_url: "https://i.imgur.com/4M34hi2.png",
     embeds: [
       {
-        title: "BOSS TIỂU ĐỘI SÁT THỦ XUẤT HIỆN!",
-        color: 15158332,
+        title: "🚨 BOSS TIỂU ĐỘI SÁT THỦ XUẤT HIỆN! 🚨",
+        color: 16724736, // Màu đỏ cam nổi bật
         fields: [
-          { name: "Boss", value: String(info.bossName), inline: true },
-          { name: "Map", value: String(info.mapName), inline: true },
-          { name: "Máy chủ", value: String(info.serverName), inline: true },
-          { name: "Thời gian ra", value: String(info.timeStr), inline: false },
-          { name: "Thời gian hỗ trợ (+7 phút 30 giây)", value: String(info.supportSpawnTime), inline: false },
-          { name: "Hỗ trợ", value: "Lỗi thông báo liên hệ Zalo 0366 517 900 Han Đây", inline: false }
+          { name: "👹 Tên Boss", value: `**${info.bossName}**`, inline: true },
+          { name: "🗺️ Bản đồ", value: `**${info.mapName}**`, inline: true },
+          { name: "🌐 Máy chủ", value: `**${info.serverName}**`, inline: true },
+          { name: "⏰ Thời gian ra", value: `\`${info.timeStr}\``, inline: false },
+          { name: "⚡ Hỗ trợ (+7 phút 30 giây)", value: `\`${info.supportSpawnTime}\``, inline: false },
+          { name: "📞 Hỗ trợ Zalo", value: "Lỗi thông báo liên hệ Zalo **0366 517 900** (Han Đây)", inline: false }
         ],
-        footer: { text: "Hệ Thống Báo Boss 15 Sao" }
+        footer: { text: "⚔️ Hệ Thống Báo Boss 15 Sao ⚔️" }
       }
     ]
   };
@@ -104,7 +103,6 @@ async function sendDiscordEmbed(item) {
     await axios.post(webhookUrl, payload);
     console.log(`[Discord Send] Đã gửi thông báo Boss: ${info.bossName} | Map: ${info.mapName}`);
 
-    // Sau khi báo Tiểu đội trưởng xong, bắt buộc gửi tin nhắn tổng kết
     if (isTeamLeader(info.bossName)) {
       await sendFinalSummaryWebhook(webhookUrl, info.timeStr, info.mapName);
     }
@@ -114,12 +112,11 @@ async function sendDiscordEmbed(item) {
   }
 }
 
-// Gửi tin nhắn tổng kết sau cùng tính theo mốc Số 4 (có dự phòng nếu chưa có Số 4)
+// Gửi tin nhắn tổng kết cuối cùng (Nền màu xanh dương dịu mắt, đầy đủ icon và mốc dự kiến)
 async function sendFinalSummaryWebhook(webhookUrl, currentTime, currentMap) {
-  // Nếu chưa có Số 4, lấy tạm thời gian hiện tại làm mốc để không bị thiếu thông tin
   const baseTime = lastNumberFourItem ? lastNumberFourItem.timeStr : currentTime;
   const baseMap = lastNumberFourItem ? lastNumberFourItem.mapName : currentMap;
-  const labelNote = lastNumberFourItem ? "Số 4 ra lúc" : "Mốc tham chiếu (Chưa thấy Số 4)";
+  const labelNote = lastNumberFourItem ? "🟢 Số 4 ra lúc" : "⚠️ Mốc tham chiếu (Chưa thấy Số 4)";
 
   const estimatedNext = calculateNextTime(baseTime, 15, 0);     // + 15 phút
   const estimatedSupport = calculateNextTime(baseTime, 7, 30);  // + 7 phút 30 giây
@@ -129,37 +126,37 @@ async function sendFinalSummaryWebhook(webhookUrl, currentTime, currentMap) {
     avatar_url: "https://i.imgur.com/4M34hi2.png",
     embeds: [
       {
-        title: "THỐNG KÊ THỜI GIAN TỪ MỐC SỐ 4",
-        color: 3447003, // Xanh dương
+        title: "📊 THỐNG KÊ THỜI GIAN TỪ MỐC SỐ 4 📊",
+        color: 3447003, // Màu xanh dương chuyên nghiệp
         fields: [
           { 
             name: labelNote, 
-            value: `**${baseTime}** (Map: ${baseMap})`, 
+            value: `**${baseTime}** tại khu vực **${baseMap}**`, 
             inline: false 
           },
           { 
-            name: "⏱️ Thời gian dự kiến xuất hiện lần sau", 
-            value: `**${estimatedNext}** ( + 15 phút )`, 
+            name: "🔮 Thời gian dự kiến xuất hiện lần sau", 
+            value: `📌 \`${estimatedNext}\` **( + 15 phút )**`, 
             inline: false 
           },
           { 
             name: "🛡️ Thời gian dự kiến trong giờ hỗ trợ", 
-            value: `**${estimatedSupport}** ( + 7 phút 30 giây )`, 
+            value: `📌 \`${estimatedSupport}\` **( + 7 phút 30 giây )**`, 
             inline: false 
           },
           { 
-            name: "Hỗ trợ", 
-            value: "Lỗi thông báo liên hệ Zalo 0366 517 900 Han Đây", 
+            name: "📞 Hỗ trợ Zalo", 
+            value: "Lỗi thông báo liên hệ Zalo **0366 517 900** (Han Đây)", 
             inline: false 
           }
         ],
-        footer: { text: "Hệ Thống Báo Boss 15 Sao" }
+        footer: { text: "⚔️ Hệ Thống Báo Boss 15 Sao ⚔️" }
       }
     ]
   };
 
   try {
-    await new Promise(resolve => setTimeout(resolve, 1000)); // Đợi 1 giây để giữ đúng thứ tự tin nhắn
+    await new Promise(resolve => setTimeout(resolve, 1000));
     await axios.post(webhookUrl, summaryPayload);
     console.log(`[Discord Summary] Đã gửi tin nhắn tổng kết mốc Số 4.`);
   } catch (err) {
@@ -231,7 +228,6 @@ app.get('/', (req, res) => {
 
 // Endpoint test nhanh
 app.get('/test-boss', async (req, res) => {
-  // 1. Giả lập Số 4 để lưu mốc
   const dummyNum4 = {
     bossName: "Số 4",
     value: "BOSS Số 4 vừa xuất hiện tại Thung lũng",
@@ -240,7 +236,6 @@ app.get('/test-boss', async (req, res) => {
   };
   await sendDiscordEmbed(dummyNum4);
 
-  // 2. Giả lập Tiểu đội trưởng xuất hiện sau đó để kích hoạt tin nhắn tổng kết chứa mốc + 15 phút
   setTimeout(async () => {
     const dummyLeader = {
       bossName: "Tiểu đội trưởng",
@@ -251,7 +246,7 @@ app.get('/test-boss', async (req, res) => {
     await sendDiscordEmbed(dummyLeader);
   }, 1500);
 
-  res.send('Đã gửi test thành công! Hãy kiểm tra Discord: Tin nhắn tổng kết cuối cùng đã hiện đầy đủ thời gian dự kiến + 15 phút.');
+  res.send('Đã gửi test giao diện mới thành công! Hãy kiểm tra Discord.');
 });
 
 const PORT = process.env.PORT || 3000;
