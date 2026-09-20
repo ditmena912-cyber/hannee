@@ -16,9 +16,31 @@ async function sendDiscordEmbed(item) {
     return;
   }
 
-  // Trích xuất hoặc gán thông tin mặc định
-  const bossName = item.bossName || item.title || item.content || "Chưa rõ";
-  const mapName = item.mapName || item.map || "Chưa rõ";
+  // Chuỗi văn bản đầy đủ chứa nội dung thông báo
+  const fullText = item.content || item.title || item.message || "";
+
+  // 1. Trích xuất Tên Boss từ key API hoặc qua Regex
+  let bossName = item.bossName || item.boss || item.name || "";
+  if (!bossName && fullText) {
+    const bossMatch = fullText.match(/(?:Boss|boss)\s+([A-Za-z0-9\sàáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđĐ]+?)(?=\s+vừa|\s+xuất hiện|\s+tại|\s+ở|$)/i);
+    if (bossMatch && bossMatch[1]) {
+      bossName = bossMatch[1].trim();
+    }
+  }
+
+  // 2. Trích xuất Tên Map từ các key API có thể có hoặc qua Regex từ nội dung
+  let mapName = item.mapName || item.map || item.map_name || item.location || item.zone || item.mapTitle || "";
+  if (!mapName && fullText) {
+    const mapMatch = fullText.match(/(?:tại|ở|map)\s+([A-Za-z0-9\sàáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđĐ]+?)(?=\s+server|\s+máy chủ|\s+\d+sao|\s*-\s*|\(|\n|$)/i);
+    if (mapMatch && mapMatch[1]) {
+      mapName = mapMatch[1].trim();
+    }
+  }
+
+  // Đảm bảo không để rỗng
+  if (!bossName) bossName = "Chưa rõ";
+  if (!mapName) mapName = "Chưa rõ";
+
   const serverName = item.server || "15 sao";
   const timeStr = item.time || item.createdAt || new Date().toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" });
 
@@ -42,7 +64,7 @@ async function sendDiscordEmbed(item) {
 
   try {
     await axios.post(webhookUrl, payload);
-    console.log(`[Discord] Đã gửi thông báo Boss: ${bossName}`);
+    console.log(`[Discord] Đã gửi thông báo Boss: ${bossName} - Map: ${mapName}`);
   } catch (err) {
     console.error("[Discord Error] Lỗi khi gửi webhook:", err.message);
   }
@@ -69,23 +91,23 @@ async function fetchBossApi() {
 
     if (!Array.isArray(dataList)) return;
 
-    // Lần đầu tiên chạy: Đánh dấu tất cả dữ liệu hiện tại làm baseline để không bị gửi lặp thông báo cũ
+    // Lần đầu tiên chạy: Tạo baseline từ danh sách cũ để không bị dồn gửi lặp lại
     if (!isBaselineLoaded) {
       dataList.forEach(item => {
-        const id = item.id || `${item.bossName}_${item.time}`;
+        const id = item.id || `${item.bossName || item.title}_${item.time}`;
         processedIds.add(id);
       });
       isBaselineLoaded = true;
-      console.log(`[Baseline] Đã thiết lập baseline với ${processedIds.size} bản ghi cũ.`);
+      console.log(`[Baseline] Đã thiết lập mốc ban đầu với ${processedIds.size} bản ghi.`);
       return;
     }
 
-    // Các lần quét tiếp theo: Chỉ lọc những bản ghi MỚI chưa từng xuất hiện
+    // Các lần quét tiếp theo: Chỉ lọc ra các thông báo MỚI
     const newItems = [];
     for (const item of dataList) {
-      const id = item.id || `${item.bossName}_${item.time}`;
+      const id = item.id || `${item.bossName || item.title}_${item.time}`;
 
-      // Kiểm tra xem đã xử lý chưa và có thuộc máy chủ 15 sao không
+      // Kiểm tra xem đã xử lý chưa và có đúng thuộc máy chủ 15 sao không
       const isServer15 = !item.server || String(item.server).includes('15');
       if (!processedIds.has(id) && isServer15) {
         processedIds.add(id);
@@ -93,12 +115,12 @@ async function fetchBossApi() {
       }
     }
 
-    // Gửi thông báo cho các mục mới tìm thấy (xử lý từ cũ đến mới)
+    // Gửi thông báo cho các mục mới (xử lý từ cũ đến mới nhất)
     for (const newItem of newItems.reverse()) {
       await sendDiscordEmbed(newItem);
     }
 
-    // Giới hạn kích thước bộ nhớ Set để tránh tràn RAM
+    // Giới hạn bộ nhớ lưu ID để tránh tràn RAM
     if (processedIds.size > 500) {
       const idsArray = Array.from(processedIds);
       const toRemove = idsArray.slice(0, idsArray.length - 200);
@@ -113,7 +135,7 @@ async function fetchBossApi() {
 // Quét API mỗi 5 giây
 setInterval(fetchBossApi, 5000);
 
-// Endpoint giữ cho service Render luôn sống (Health Check)
+// Endpoint Health Check giữ Render luôn sống
 app.get('/', (req, res) => {
   res.send('Boss Monitor Service is running...');
 });
