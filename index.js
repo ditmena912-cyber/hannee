@@ -7,10 +7,9 @@ app.use(express.json());
 let isBaselineLoaded = false;
 const processedIds = new Set();
 
-// Biến lưu trữ thời gian xuất hiện gần nhất của Boss "Số 4"
 let lastNumberFourTime = null;
 
-// Hàm kiểm tra xem có phải Boss Tiểu đội sát thủ không
+// Kiểm tra nhóm Boss Tiểu đội sát thủ
 function isTargetBoss(bossName) {
   if (!bossName) return false;
   const nameLower = bossName.toLowerCase();
@@ -18,14 +17,18 @@ function isTargetBoss(bossName) {
   return keywords.some(kw => nameLower.includes(kw));
 }
 
-// Hàm kiểm tra xem có phải đích danh Số 4 không
 function isNumberFour(bossName) {
   if (!bossName) return false;
-  const nameLower = bossName.toLowerCase();
-  return nameLower.includes('số 4');
+  return bossName.toLowerCase().includes('số 4');
 }
 
-// Hàm tính toán thời gian tiếp theo (+15 phút hoặc +7 phút 30 giây)
+function isTeamLeader(bossName) {
+  if (!bossName) return false;
+  const nameLower = bossName.toLowerCase();
+  return nameLower.includes('đội trưởng') || nameLower.includes('ginyu');
+}
+
+// Tính toán thời gian cộng thêm (ví dụ cho thời gian hỗ trợ +7 phút 30 giây)
 function calculateNextTime(timeStr, addMins, addSecs = 0) {
   try {
     const date = new Date(timeStr.replace(/-/g, '/'));
@@ -41,9 +44,9 @@ function calculateNextTime(timeStr, addMins, addSecs = 0) {
   }
 }
 
-// Hàm tính khoảng cách thời gian (phút, giây) kể từ lúc Số 4 ra đến Boss hiện tại
+// Tính khoảng cách thời gian từ Số 4 tới thời điểm hiện tại (hoặc thời điểm Tiểu đội trưởng ra)
 function calculateTimeSinceNumberFour(currentTimeStr) {
-  if (!lastNumberFourTime) return "Chưa có mốc của Số 4";
+  if (!lastNumberFourTime) return "Chưa ghi nhận mốc của Số 4";
   try {
     const timeNum4 = new Date(lastNumberFourTime.replace(/-/g, '/')).getTime();
     const timeCurrent = new Date(currentTimeStr.replace(/-/g, '/')).getTime();
@@ -51,14 +54,13 @@ function calculateTimeSinceNumberFour(currentTimeStr) {
     if (isNaN(timeNum4) || isNaN(timeCurrent)) return "Không xác định";
 
     let diffMs = timeCurrent - timeNum4;
-    // Nếu boss hiện tại ra trước Số 4 (do lệch log cũ)
     if (diffMs < 0) return "Trước mốc Số 4 gần nhất";
 
     let diffSeconds = Math.floor(diffMs / 1000);
     let minutes = Math.floor(diffSeconds / 60);
     let seconds = diffSeconds % 60;
 
-    return `Cách Số 4: ${minutes} phút ${seconds} giây`;
+    return `${minutes} phút ${seconds} giây`;
   } catch (e) {
     return "Không xác định";
   }
@@ -79,23 +81,21 @@ function extractInfo(item) {
   const serverName = item.server || "15 sao";
   const timeStr = item.time || new Date().toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" });
 
-  // Nếu đây là Số 4, cập nhật mốc thời gian mới nhất của Số 4
   if (isNumberFour(bossName)) {
     lastNumberFourTime = timeStr;
   }
 
-  // Dự kiến lần sau: cộng thêm 15 phút tròn
-  const nextSpawnTime = calculateNextTime(timeStr, 15, 0);
-  
-  // Thời gian hỗ trợ: chỉ cộng thêm 7 phút 30 giây
+  // Chỉ tính thời gian hỗ trợ cho thông báo thường
   const supportSpawnTime = calculateNextTime(timeStr, 7, 30);
-
-  // Tính số phút/giây kể từ mốc Số 4
+  
+  // Thời gian dự kiến lần sau tính từ mốc Số 4 (dùng cho tin nhắn tổng kết)
+  const estimatedNextFromNum4 = lastNumberFourTime ? calculateNextTime(lastNumberFourTime, 15, 0) : "Chưa có mốc Số 4";
   const timeSinceNum4 = calculateTimeSinceNumberFour(timeStr);
 
-  return { bossName, mapName, serverName, timeStr, nextSpawnTime, supportSpawnTime, timeSinceNum4 };
+  return { bossName, mapName, serverName, timeStr, supportSpawnTime, timeSinceNum4, estimatedNextFromNum4 };
 }
 
+// Gửi tin nhắn Embed thông báo Boss (Đã xóa thời gian dự kiến)
 async function sendDiscordEmbed(item) {
   const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
   if (!webhookUrl) return;
@@ -106,24 +106,6 @@ async function sendDiscordEmbed(item) {
     return;
   }
 
-  const fields = [
-    { name: "Boss", value: String(info.bossName), inline: true },
-    { name: "Map", value: String(info.mapName), inline: true },
-    { name: "Máy chủ", value: String(info.serverName), inline: true },
-    { name: "Thời gian ra", value: String(info.timeStr), inline: false },
-    { name: "Dự kiến lần sau (+15 phút)", value: String(info.nextSpawnTime), inline: false },
-    { name: "Thời gian hỗ trợ (+7 phút 30 giây)", value: String(info.supportSpawnTime), inline: false }
-  ];
-
-  // Nếu không phải là Số 4, hiển thị thêm dòng tính khoảng cách thời gian từ Số 4
-  if (!isNumberFour(info.bossName)) {
-    fields.push({ name: "⏱️ Thời gian so với Số 4", value: String(info.timeSinceNum4), inline: false });
-  } else {
-    fields.push({ name: "⏱️ Mốc chuẩn", value: "Đây là mốc xuất hiện của Số 4", inline: false });
-  }
-
-  fields.push({ name: "Hỗ trợ", value: "Lỗi thông báo liên hệ Zalo 0366 517 900 Han Đây", inline: false });
-
   const payload = {
     username: "millims15",
     avatar_url: "https://i.imgur.com/4M34hi2.png",
@@ -131,7 +113,14 @@ async function sendDiscordEmbed(item) {
       {
         title: "BOSS TIỂU ĐỘI SÁT THỦ XUẤT HIỆN!",
         color: 15158332,
-        fields: fields,
+        fields: [
+          { name: "Boss", value: String(info.bossName), inline: true },
+          { name: "Map", value: String(info.mapName), inline: true },
+          { name: "Máy chủ", value: String(info.serverName), inline: true },
+          { name: "Thời gian ra", value: String(info.timeStr), inline: false },
+          { name: "Thời gian hỗ trợ (+7 phút 30 giây)", value: String(info.supportSpawnTime), inline: false },
+          { name: "Hỗ trợ", value: "Lỗi thông báo liên hệ Zalo 0366 517 900 Han Đây", inline: false }
+        ],
         footer: { text: "Hệ Thống Báo Boss 15 Sao" }
       }
     ]
@@ -140,8 +129,44 @@ async function sendDiscordEmbed(item) {
   try {
     await axios.post(webhookUrl, payload);
     console.log(`[Discord Send] Đã gửi thông báo Boss: ${info.bossName} | Map: ${info.mapName}`);
+
+    // Sau khi báo Tiểu đội trưởng, gửi thêm 1 tin nhắn riêng chứa thời gian tính từ Số 4 và thời gian dự kiến
+    if (isTeamLeader(info.bossName)) {
+      await sendTimeReportWebhook(webhookUrl, info);
+    }
+
   } catch (err) {
     console.error("[Discord Error] Lỗi khi gửi webhook:", err.message);
+  }
+}
+
+// Gửi tin nhắn riêng biệt tổng kết tính từ Số 4 và có thời gian dự kiến
+async function sendTimeReportWebhook(webhookUrl, info) {
+  const timeReportPayload = {
+    username: "millims15",
+    avatar_url: "https://i.imgur.com/4M34hi2.png",
+    embeds: [
+      {
+        title: "📊 THỐNG KÊ THỜI GIAN TỪ MỐC SỐ 4",
+        color: 3447003, // Xanh dương
+        fields: [
+          { name: "Mốc xuất phát (Số 4)", value: String(lastNumberFourTime || "Chưa xác định"), inline: false },
+          { name: "Thời điểm Tiểu đội trưởng ra", value: String(info.timeStr), inline: false },
+          { name: "⏱️ Thời gian trôi qua từ Số 4", value: `**${info.timeSinceNum4}**`, inline: false },
+          { name: "🔮 Dự kiến lần sau (từ mốc Số 4 +15 phút)", value: `**${info.estimatedNextFromNum4}**`, inline: false },
+          { name: "Hỗ trợ", value: "Lỗi thông báo liên hệ Zalo 0366 517 900 Han Đây", inline: false }
+        ],
+        footer: { text: "Hệ Thống Báo Boss 15 Sao" }
+      }
+    ]
+  };
+
+  try {
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    await axios.post(webhookUrl, timeReportPayload);
+    console.log(`[Discord Report] Đã gửi tin nhắn tổng kết thời gian từ Số 4.`);
+  } catch (err) {
+    console.error("[Discord Error Report] Lỗi khi gửi tin tổng kết:", err.message);
   }
 }
 
@@ -160,7 +185,6 @@ async function fetchBossApi() {
       dataList.forEach(item => {
         const id = item.id || `${item.bossName}_${item.time}`;
         processedIds.add(id);
-        // Quét sẵn mốc Số 4 trong dữ liệu lịch sử ban đầu nếu có
         if (isNumberFour(item.bossName)) {
           if (!lastNumberFourTime || item.time > lastNumberFourTime) {
             lastNumberFourTime = item.time;
@@ -168,7 +192,7 @@ async function fetchBossApi() {
         }
       });
       isBaselineLoaded = true;
-      console.log(`[Baseline] Đã thiết lập mốc ban đầu. Mốc Số 4 gần nhất: ${lastNumberFourTime || 'Chưa có'}`);
+      console.log(`[Baseline] Thiết lập mốc ban đầu xong. Số 4 gần nhất: ${lastNumberFourTime || 'Chưa có'}`);
       return;
     }
 
@@ -205,27 +229,27 @@ app.get('/', (req, res) => {
 
 // Endpoint test nhanh
 app.get('/test-boss', async (req, res) => {
-  // Test gửi Số 4 trước để lấy mốc
+  // 1. Giả lập Số 4 để lấy mốc thời gian chuẩn
   const dummyNum4 = {
     bossName: "Số 4",
     value: "BOSS Số 4 vừa xuất hiện tại Thung lũng",
     server: "15 sao",
-    time: "2026-09-21 01:50:00"
+    time: "2026-09-21 01:00:00"
   };
   await sendDiscordEmbed(dummyNum4);
 
-  // Test gửi Boss khác sau 12 phút 30 giây để kiểm tra tính giờ so với Số 4
+  // 2. Giả lập Tiểu đội trưởng để kích hoạt tin nhắn thống kê riêng kèm thời gian dự kiến tính từ Số 4
   setTimeout(async () => {
-    const dummyOther = {
-      bossName: "Số 3",
-    value: "BOSS Số 3 vừa xuất hiện tại Vách đá",
+    const dummyLeader = {
+      bossName: "Tiểu đội trưởng",
+      value: "BOSS Tiểu đội trưởng vừa xuất hiện tại Hang khỉ đen",
       server: "15 sao",
-      time: "2026-09-21 02:02:30"
+      time: "2026-09-21 01:25:30"
     };
-    await sendDiscordEmbed(dummyOther);
-  }, 1000);
+    await sendDiscordEmbed(dummyLeader);
+  }, 1500);
 
-  res.send('Đã gửi chuỗi test Số 4 và Số 3 lên Discord! Kiểm tra lại xem thông số chênh lệch thời gian nhé.');
+  res.send('Đã gửi test: Thông báo boss không có thời gian dự kiến, sau đó gửi tin nhắn tổng kết riêng tính từ Số 4 thành công!');
 });
 
 const PORT = process.env.PORT || 3000;
