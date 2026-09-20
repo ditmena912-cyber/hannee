@@ -45,7 +45,7 @@ async function sendDiscordEmbed(item) {
   const timeStr = item.time || item.createdAt || new Date().toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" });
 
   const payload = {
-    username: "Spidey Bot",
+    username: "millims15", // Đã đổi tên bot thành millims15
     avatar_url: "https://i.imgur.com/4M34hi2.png",
     embeds: [
       {
@@ -57,7 +57,7 @@ async function sendDiscordEmbed(item) {
           { name: "Máy chủ", value: String(serverName), inline: true },
           { name: "Thời gian", value: String(timeStr), inline: false }
         ],
-        footer: { text: "Nguồn: service.dungpham.com.vn" }
+        footer: { text: "Hệ Thống Báo Boss 15 Sao" } // Đã đổi tên nguồn
       }
     ]
   };
