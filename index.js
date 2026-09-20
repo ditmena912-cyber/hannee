@@ -7,46 +7,47 @@ app.use(express.json());
 let isBaselineLoaded = false;
 const processedIds = new Set();
 
-// Hàm trích xuất Boss và Map tối ưu
+// Hàm trích xuất thông tin khớp chuẩn với giao diện Web
 function extractInfo(item) {
-  const fullText = (item.content || item.title || item.message || item.description || "").trim();
-
-  // 1. Trích xuất Tên Boss
+  // Ưu tiên lấy từ thuộc tính object nếu có
   let bossName = item.bossName || item.boss || item.name || item.boss_name || "";
-  if (!bossName && fullText) {
-    const bossMatch = fullText.match(/(?:Boss|boss)\s*[:\s]\s*([A-Za-z0-9\sàáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđĐ]+?)(?=\s+vừa|\s+xuất|\s+tại|\s+ở|\s*-\s*|\s*Map|\n|$)/i) ||
-                     fullText.match(/([A-Za-z0-9\sàáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđĐ]+?)\s+(?:vừa xuất hiện|vừa xuất|xuất hiện)/i);
-    if (bossMatch && bossMatch[1]) {
-      bossName = bossMatch[1].trim();
-    }
-  }
-
-  // 2. Trích xuất Tên Map
-  let mapName = item.mapName || item.map || item.map_name || item.location || item.zone || item.mapTitle || item.map_title || "";
+  let mapName = item.mapName || item.map || item.map_name || item.location || "";
 
   if (typeof mapName === 'object' && mapName !== null) {
-    mapName = mapName.name || mapName.title || mapName.label || "";
+    mapName = mapName.name || mapName.title || "";
   }
 
-  if ((!mapName || mapName === "Chưa rõ") && fullText) {
-    // Bắt từ đứng sau "tại", "ở", "map", "vừa xuất hiện tại/ở"
-    const mapMatch = fullText.match(/(?:tại|ở|map)\s+([A-Za-z0-9\sàáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđĐ]+?)(?=\s+khu|\s+Khu|\s+server|\s+máy chủ|\s+\d+sao|\s*-\s*|\(|\n|$)/i) ||
-                     fullText.match(/(?:Map|map)\s*[:\s]\s*([A-Za-z0-9\sàáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđĐ]+?)(?=\s+khu|\s+Khu|\s+server|\s*-\s*|\(|\n|$)/i);
-    
-    if (mapMatch && mapMatch[1]) {
-      mapName = mapMatch[1].trim();
-    } else {
-      // Bắt theo từ khóa địa danh NRO nếu các cách trên trượt
-      const nroMatch = fullText.match(/(?:Thung lũng|Rừng|Đảo|Thành phố|Đông|Tây|Nam|Bắc|Trạm|Căn cứ|Vực|Tháp|Làng|Hành tinh|Đồi|Nghĩa địa|Rạn ngọc|Đầm lầy|Đỉnh|Hang|Thảo nguyên|Đại ngàn|Vườn)\s+[A-Za-z0-9\sàáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđĐ]+/i);
-      if (nroMatch) {
-        mapName = nroMatch[0].trim();
+  // Trường hợp dữ liệu là chuỗi văn bản (như hiển thị trên Web)
+  const fullText = (item.content || item.title || item.message || item.description || "").trim();
+
+  if (fullText) {
+    // Bắt dòng "Boss: [Tên Boss]"
+    if (!bossName || bossName === "Chưa rõ") {
+      const bossMatch = fullText.match(/Boss\s*:\s*([^\n\r]+)/i);
+      if (bossMatch && bossMatch[1]) {
+        bossName = bossMatch[1].trim();
+      }
+    }
+
+    // Bắt dòng "Map: [Tên Map]"
+    if (!mapName || mapName === "Chưa rõ") {
+      const mapMatch = fullText.match(/Map\s*:\s*([^\n\r]+)/i);
+      if (mapMatch && mapMatch[1]) {
+        mapName = mapMatch[1].trim();
       }
     }
   }
 
-  // Loại bỏ chữ "khu..." nếu lỡ bị dính vào tên Map
-  if (mapName) {
-    mapName = mapName.replace(/\s+khu\s*\d+.*/i, '').trim();
+  // Nếu thông báo là dạng chuỗi tự do (VD: "Boss Tiểu đội trưởng vừa xuất hiện tại Hang khỉ đen")
+  if ((!bossName || bossName === "Chưa rõ") && fullText) {
+    const bMatch = fullText.match(/(?:Boss|boss)\s*[:\s]\s*([A-Za-z0-9\sàáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđĐ]+?)(?=\s+vừa|\s+xuất|\s+tại|\s+ở|\n|$)/i);
+    if (bMatch) bossName = bMatch[1].trim();
+  }
+
+  if ((!mapName || mapName === "Chưa rõ") && fullText) {
+    const mMatch = fullText.match(/(?:Map|map)\s*[:\s]\s*([A-Za-z0-9\sàáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđĐ]+?)(?=\s+khu|\s+server|\s+máy chủ|\n|$)/i) ||
+                   fullText.match(/(?:tại|ở)\s+([A-Za-z0-9\sàáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđĐ]+?)(?=\s+khu|\s+server|\s+máy chủ|\n|$)/i);
+    if (mMatch) mapName = mMatch[1].trim();
   }
 
   if (!bossName) bossName = "Chưa rõ";
@@ -58,6 +59,7 @@ function extractInfo(item) {
   return { bossName, mapName, serverName, timeStr };
 }
 
+// Hàm gửiEmbed sang Discord
 async function sendDiscordEmbed(item) {
   const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
   if (!webhookUrl) return;
