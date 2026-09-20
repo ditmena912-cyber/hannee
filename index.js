@@ -69,7 +69,7 @@ function extractInfo(item) {
   return { bossName, mapName, serverName, timeStr, supportSpawnTime };
 }
 
-// Gửi tin nhắn Embed thông báo Boss (Thông thường)
+// Gửi tin nhắn Embed thông báo Boss (Thông thường - không có dự kiến)
 async function sendDiscordEmbed(item) {
   const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
   if (!webhookUrl) return;
@@ -104,9 +104,9 @@ async function sendDiscordEmbed(item) {
     await axios.post(webhookUrl, payload);
     console.log(`[Discord Send] Đã gửi thông báo Boss: ${info.bossName} | Map: ${info.mapName}`);
 
-    // Sau khi báo Tiểu đội trưởng xong, gửi thêm 1 tin nhắn tổng kết dựa trên mốc của Số 4
+    // Sau khi báo Tiểu đội trưởng xong, bắt buộc gửi tin nhắn tổng kết
     if (isTeamLeader(info.bossName)) {
-      await sendFinalSummaryWebhook(webhookUrl);
+      await sendFinalSummaryWebhook(webhookUrl, info.timeStr, info.mapName);
     }
 
   } catch (err) {
@@ -114,16 +114,15 @@ async function sendDiscordEmbed(item) {
   }
 }
 
-// Gửi tin nhắn tổng kết sau cùng chỉ tính theo mốc Số 4
-async function sendFinalSummaryWebhook(webhookUrl) {
-  if (!lastNumberFourItem) {
-    console.log("[Summary] Chưa có mốc Số 4 nào được ghi nhận để tổng kết.");
-    return;
-  }
+// Gửi tin nhắn tổng kết sau cùng tính theo mốc Số 4 (có dự phòng nếu chưa có Số 4)
+async function sendFinalSummaryWebhook(webhookUrl, currentTime, currentMap) {
+  // Nếu chưa có Số 4, lấy tạm thời gian hiện tại làm mốc để không bị thiếu thông tin
+  const baseTime = lastNumberFourItem ? lastNumberFourItem.timeStr : currentTime;
+  const baseMap = lastNumberFourItem ? lastNumberFourItem.mapName : currentMap;
+  const labelNote = lastNumberFourItem ? "Số 4 ra lúc" : "Mốc tham chiếu (Chưa thấy Số 4)";
 
-  const num4Time = lastNumberFourItem.timeStr;
-  const estimatedNext = calculateNextTime(num4Time, 15, 0);     // + 15 phút
-  const estimatedSupport = calculateNextTime(num4Time, 7, 30);  // + 7 phút 30 giây
+  const estimatedNext = calculateNextTime(baseTime, 15, 0);     // + 15 phút
+  const estimatedSupport = calculateNextTime(baseTime, 7, 30);  // + 7 phút 30 giây
 
   const summaryPayload = {
     username: "millims15",
@@ -134,8 +133,8 @@ async function sendFinalSummaryWebhook(webhookUrl) {
         color: 3447003, // Xanh dương
         fields: [
           { 
-            name: "Số 4 ra lúc", 
-            value: `**${num4Time}** (Map: ${lastNumberFourItem.mapName})`, 
+            name: labelNote, 
+            value: `**${baseTime}** (Map: ${baseMap})`, 
             inline: false 
           },
           { 
@@ -160,7 +159,7 @@ async function sendFinalSummaryWebhook(webhookUrl) {
   };
 
   try {
-    await new Promise(resolve => setTimeout(resolve, 1000)); // Đợi 1 giây để thứ tự tin nhắn chuẩn xác
+    await new Promise(resolve => setTimeout(resolve, 1000)); // Đợi 1 giây để giữ đúng thứ tự tin nhắn
     await axios.post(webhookUrl, summaryPayload);
     console.log(`[Discord Summary] Đã gửi tin nhắn tổng kết mốc Số 4.`);
   } catch (err) {
@@ -241,7 +240,7 @@ app.get('/test-boss', async (req, res) => {
   };
   await sendDiscordEmbed(dummyNum4);
 
-  // 2. Giả lập Tiểu đội trưởng xuất hiện sau đó để kích hoạt tin nhắn tổng kết
+  // 2. Giả lập Tiểu đội trưởng xuất hiện sau đó để kích hoạt tin nhắn tổng kết chứa mốc + 15 phút
   setTimeout(async () => {
     const dummyLeader = {
       bossName: "Tiểu đội trưởng",
@@ -252,7 +251,7 @@ app.get('/test-boss', async (req, res) => {
     await sendDiscordEmbed(dummyLeader);
   }, 1500);
 
-  res.send('Đã gửi test thành công! Hãy kiểm tra Discord: Các thông báo boss sẽ rất gọn, và tin nhắn cuối cùng sẽ tính toán chuẩn xác theo mốc Số 4.');
+  res.send('Đã gửi test thành công! Hãy kiểm tra Discord: Tin nhắn tổng kết cuối cùng đã hiện đầy đủ thời gian dự kiến + 15 phút.');
 });
 
 const PORT = process.env.PORT || 3000;
