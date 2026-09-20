@@ -191,7 +191,7 @@ async function sendMaintenanceWebhook(item) {
 
   try {
     await axios.post(webhookUrl, maintenancePayload);
-    console.log(`[Discord Maintenance] Đã gửi thông báo bảo trì thành công.`);
+    console.log(`[Discord Maintenance] Đã gửi thông báo bảo trì thành công: ${formattedTime}`);
   } catch (err) {
     console.error("[Discord Error Maintenance] Lỗi:", err.message);
   }
@@ -199,19 +199,28 @@ async function sendMaintenanceWebhook(item) {
 
 async function fetchBossApi() {
   try {
-    // 1. Quét danh mục BOSS (GIỮ NGUYÊN CƠ CHẾ CŨ)
-    const resBoss = await axios.get('https://service.dungpham.com.vn/api/thong-bao', {
-      params: { server: '15 sao', category: 'BOSS', size: 50, sort: 'id,desc' },
+    // Gọi trực tiếp API lấy danh sách thông báo của máy chủ 15 sao
+    const res = await axios.get('https://service.dungpham.com.vn/api/thong-bao', {
+      params: { server: '15 sao', size: 50, sort: 'id,desc' },
       headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' },
       timeout: 10000
     });
 
-    const bossList = Array.isArray(resBoss.data) ? resBoss.data : (resBoss.data.content || []);
-    if (Array.isArray(bossList)) {
+    const listData = Array.isArray(res.data) ? res.data : (res.data.content || []);
+    if (Array.isArray(listData)) {
       if (!isBaselineLoaded) {
-        bossList.forEach(item => {
-          const id = item.id || `${item.bossName}_${item.time}`;
+        listData.forEach(item => {
+          const id = item.id || `${item.bossName || item.title}_${item.time}`;
           processedIds.add(id);
+
+          // Đánh dấu bảo trì cũ
+          const category = String(item.category || item.type || "").toLowerCase();
+          const contentStr = String(item.value || item.title || "").toLowerCase();
+          if (category.includes('bảo trì') || contentStr.includes('bảo trì')) {
+            const minuteKey = formatMaintenanceTime(item.time || "");
+            processedMaintenanceIds.add(`maint_${item.id || minuteKey}`);
+          }
+
           if (isNumberFour(item.bossName)) {
             if (!lastNumberFourItem || item.time > lastNumberFourItem.timeStr) {
               let mapName = "Chưa rõ";
@@ -223,46 +232,41 @@ async function fetchBossApi() {
             }
           }
         });
+        isBaselineLoaded = true;
+        console.log("[System] Đã tải xong dữ liệu gốc (Baseline). Đang chờ thông báo mới...");
       } else {
+        // Xử lý các item mới xuất hiện
         const newItems = [];
-        for (const item of bossList) {
-          const id = item.id || `${item.bossName}_${item.time}`;
+        for (const item of listData) {
+          const id = item.id || `${item.bossName || item.title}_${item.time}`;
           const isServer15 = !item.server || String(item.server).includes('15');
           if (!processedIds.has(id) && isServer15) {
             processedIds.add(id);
             newItems.push(item);
           }
         }
+
         for (const newItem of newItems.reverse()) {
-          await sendDiscordEmbed(newItem);
-        }
-      }
-    }
+          // 1. Kiểm tra xem có phải thông báo Bảo trì không
+          const category = String(newItem.category || newItem.type || "").toLowerCase();
+          const contentStr = String(newItem.value || newItem.title || "").toLowerCase();
+          
+          if (category.includes('bảo trì') || contentStr.includes('bảo trì')) {
+            const rawTime = newItem.time || "";
+            const minuteKey = formatMaintenanceTime(rawTime);
+            const maintId = `maint_${newItem.id || minuteKey}`;
 
-    // 2. Quét riêng danh mục BẢO TRÌ
-    const resMaint = await axios.get('https://service.dungpham.com.vn/api/thong-bao', {
-      params: { server: '15 sao', category: 'Bảo trì', size: 20, sort: 'id,desc' },
-      headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' },
-      timeout: 10000
-    });
-
-    const maintList = Array.isArray(resMaint.data) ? resMaint.data : (resMaint.data.content || []);
-    if (Array.isArray(maintList)) {
-      for (const item of maintList) {
-        const rawTime = item.time || "";
-        const minuteKey = formatMaintenanceTime(rawTime);
-        const maintId = `maint_${item.id || minuteKey}`;
-
-        if (!processedMaintenanceIds.has(maintId)) {
-          processedMaintenanceIds.add(maintId);
-          if (isBaselineLoaded) {
-            await sendMaintenanceWebhook(item);
+            if (!processedMaintenanceIds.has(maintId)) {
+              processedMaintenanceIds.add(maintId);
+              await sendMaintenanceWebhook(newItem);
+            }
+          } else {
+            // 2. Nếu không phải bảo trì thì chạy logic Boss cũ
+            await sendDiscordEmbed(newItem);
           }
         }
       }
     }
-
-    isBaselineLoaded = true;
 
     if (processedIds.size > 500) {
       const arr = Array.from(processedIds);
