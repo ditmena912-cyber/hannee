@@ -16,21 +16,13 @@ function isTargetBoss(bossName) {
 }
 
 // Hàm tính toán thời gian tiếp theo
-function calculateNextTime(timeStr, isSupport = false) {
+function calculateNextTime(timeStr, addMins, addSecs = 0) {
   try {
     const date = new Date(timeStr.replace(/-/g, '/'));
     if (isNaN(date.getTime())) return "Không xác định";
 
-    let addMinutes = 15;
-    let addSeconds = 0;
-
-    if (isSupport) {
-      addMinutes += 7;
-      addSeconds += 30;
-    }
-
-    date.setMinutes(date.getMinutes() + addMinutes);
-    date.setSeconds(date.getSeconds() + addSeconds);
+    date.setMinutes(date.getMinutes() + addMins);
+    date.setSeconds(date.getSeconds() + addSecs);
 
     const pad = (n) => String(n).padStart(2, '0');
     return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
@@ -54,10 +46,13 @@ function extractInfo(item) {
   const serverName = item.server || "15 sao";
   const timeStr = item.time || new Date().toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" });
 
-  const nextSpawnTime = calculateNextTime(timeStr, false);
-  const nextSupportSpawnTime = calculateNextTime(timeStr, true);
+  // Dự kiến lần sau: cộng thêm 15 phút tròn
+  const nextSpawnTime = calculateNextTime(timeStr, 15, 0);
+  
+  // Thời gian hỗ trợ: chỉ cộng thêm 7 phút 30 giây
+  const supportSpawnTime = calculateNextTime(timeStr, 7, 30);
 
-  return { bossName, mapName, serverName, timeStr, nextSpawnTime, nextSupportSpawnTime };
+  return { bossName, mapName, serverName, timeStr, nextSpawnTime, supportSpawnTime };
 }
 
 async function sendDiscordEmbed(item) {
@@ -86,7 +81,8 @@ async function sendDiscordEmbed(item) {
           { name: "Máy chủ", value: String(info.serverName), inline: true },
           { name: "Thời gian ra", value: String(info.timeStr), inline: false },
           { name: "Dự kiến lần sau (+15 phút)", value: String(info.nextSpawnTime), inline: false },
-          { name: "Thời gian hỗ trợ (+22 phút 30 giây)", value: String(info.nextSupportSpawnTime), inline: false }
+          { name: "Thời gian hỗ trợ (+7 phút 30 giây)", value: String(info.supportSpawnTime), inline: false },
+          { name: "Hỗ trợ", value: "Lỗi thông báo liên hệ Zalo 0366 517 900 Han Đây", inline: false }
         ],
         footer: { text: "Hệ Thống Báo Boss 15 Sao" }
       }
@@ -95,7 +91,7 @@ async function sendDiscordEmbed(item) {
 
   try {
     await axios.post(webhookUrl, payload);
-    console.log(`[Discord Test/Send] Đã gửi thông báo Boss: ${info.bossName} | Map: ${info.mapName}`);
+    console.log(`[Discord Send] Đã gửi thông báo Boss: ${info.bossName} | Map: ${info.mapName}`);
   } catch (err) {
     console.error("[Discord Error] Lỗi khi gửi webhook:", err.message);
   }
@@ -149,12 +145,11 @@ async function fetchBossApi() {
 
 setInterval(fetchBossApi, 5000);
 
-// Endpoint chính giữ bot sống
 app.get('/', (req, res) => {
   res.send('Boss Monitor Service is running...');
 });
 
-// Endpoint TEST NHANH: Truy cập link https://<tên-app>.onrender.com/test-boss để bot gửi tin nhắn thử nghiệm ngay lập tức
+// Endpoint test nhanh
 app.get('/test-boss', async (req, res) => {
   const dummyItem = {
     bossName: "Tiểu đội trưởng",
@@ -163,7 +158,7 @@ app.get('/test-boss', async (req, res) => {
     time: "2026-09-21 01:50:23"
   };
   await sendDiscordEmbed(dummyItem);
-  res.send('Đã gửi tin nhắn test boss Tiểu đội trưởng lên Discord thành công! Kiểm tra lại kênh Discord của bạn nhé.');
+  res.send('Đã gửi tin nhắn test chuẩn xác lên Discord! Kiểm tra lại nhé.');
 });
 
 const PORT = process.env.PORT || 3000;
