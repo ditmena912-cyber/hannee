@@ -7,49 +7,53 @@ app.use(express.json());
 let isBaselineLoaded = false;
 const processedIds = new Set();
 
-// Hàm trích xuất thông tin khớp chuẩn với giao diện Web
+// Hàm trích xuất thông tin Boss và Map cực kỳ linh hoạt
 function extractInfo(item) {
-  // Ưu tiên lấy từ thuộc tính object nếu có
+  // 1. Trích xuất Tên Boss
   let bossName = item.bossName || item.boss || item.name || item.boss_name || "";
-  let mapName = item.mapName || item.map || item.map_name || item.location || "";
 
+  // 2. Trích xuất Tên Map từ thuộc tính API
+  let mapName = item.mapName || item.map || item.map_name || item.location || item.zone || item.mapTitle || item.map_title || item.area || "";
+
+  // Nếu mapName là một Object (VD: { id: 1, name: "Hang khỉ đen" })
   if (typeof mapName === 'object' && mapName !== null) {
-    mapName = mapName.name || mapName.title || "";
+    mapName = mapName.name || mapName.title || mapName.label || "";
   }
 
-  // Trường hợp dữ liệu là chuỗi văn bản (như hiển thị trên Web)
+  // Quét toàn bộ các Key trong item nếu vẫn chưa tìm thấy Map
+  if (!mapName) {
+    for (const key in item) {
+      if (key.toLowerCase().includes('map') || key.toLowerCase().includes('location') || key.toLowerCase().includes('zone')) {
+        if (typeof item[key] === 'string' && item[key].trim() !== '') {
+          mapName = item[key];
+          break;
+        } else if (typeof item[key] === 'object' && item[key] !== null) {
+          mapName = item[key].name || item[key].title || item[key].label || "";
+          if (mapName) break;
+        }
+      }
+    }
+  }
+
+  // 3. Nếu vẫn chưa thấy, bóc tách Regex từ chuỗi văn bản thông báo
   const fullText = (item.content || item.title || item.message || item.description || "").trim();
 
   if (fullText) {
-    // Bắt dòng "Boss: [Tên Boss]"
-    if (!bossName || bossName === "Chưa rõ") {
-      const bossMatch = fullText.match(/Boss\s*:\s*([^\n\r]+)/i);
-      if (bossMatch && bossMatch[1]) {
-        bossName = bossMatch[1].trim();
-      }
+    if (!bossName) {
+      const bossMatch = fullText.match(/Boss\s*:\s*([^\n\r]+)/i) ||
+                        fullText.match(/(?:Boss|boss)\s*[:\s]\s*([A-Za-z0-9\sàáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđĐ]+?)(?=\s+vừa|\s+xuất|\s+tại|\s+ở|\n|$)/i);
+      if (bossMatch && bossMatch[1]) bossName = bossMatch[1].trim();
     }
 
-    // Bắt dòng "Map: [Tên Map]"
-    if (!mapName || mapName === "Chưa rõ") {
-      const mapMatch = fullText.match(/Map\s*:\s*([^\n\r]+)/i);
-      if (mapMatch && mapMatch[1]) {
-        mapName = mapMatch[1].trim();
-      }
+    if (!mapName) {
+      const mapMatch = fullText.match(/Map\s*:\s*([^\n\r]+)/i) ||
+                       fullText.match(/(?:Map|map)\s*[:\s]\s*([A-Za-z0-9\sàáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđĐ]+?)(?=\s+khu|\s+server|\s+máy chủ|\n|$)/i) ||
+                       fullText.match(/(?:tại|ở)\s+([A-Za-z0-9\sàáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđĐ]+?)(?=\s+khu|\s+server|\s+máy chủ|\n|$)/i);
+      if (mapMatch && mapMatch[1]) mapName = mapMatch[1].trim();
     }
   }
 
-  // Nếu thông báo là dạng chuỗi tự do (VD: "Boss Tiểu đội trưởng vừa xuất hiện tại Hang khỉ đen")
-  if ((!bossName || bossName === "Chưa rõ") && fullText) {
-    const bMatch = fullText.match(/(?:Boss|boss)\s*[:\s]\s*([A-Za-z0-9\sàáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđĐ]+?)(?=\s+vừa|\s+xuất|\s+tại|\s+ở|\n|$)/i);
-    if (bMatch) bossName = bMatch[1].trim();
-  }
-
-  if ((!mapName || mapName === "Chưa rõ") && fullText) {
-    const mMatch = fullText.match(/(?:Map|map)\s*[:\s]\s*([A-Za-z0-9\sàáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđĐ]+?)(?=\s+khu|\s+server|\s+máy chủ|\n|$)/i) ||
-                   fullText.match(/(?:tại|ở)\s+([A-Za-z0-9\sàáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđĐ]+?)(?=\s+khu|\s+server|\s+máy chủ|\n|$)/i);
-    if (mMatch) mapName = mMatch[1].trim();
-  }
-
+  // Chuẩn hóa kết quả
   if (!bossName) bossName = "Chưa rõ";
   if (!mapName) mapName = "Chưa rõ";
 
@@ -59,7 +63,6 @@ function extractInfo(item) {
   return { bossName, mapName, serverName, timeStr };
 }
 
-// Hàm gửiEmbed sang Discord
 async function sendDiscordEmbed(item) {
   const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
   if (!webhookUrl) return;
@@ -110,6 +113,11 @@ async function fetchBossApi() {
 
     const dataList = Array.isArray(response.data) ? response.data : (response.data.content || []);
     if (!Array.isArray(dataList)) return;
+
+    // In cấu trúc dữ liệu lên Render Log để tiện theo dõi
+    if (dataList.length > 0 && !isBaselineLoaded) {
+      console.log("[DEBUG API ITEM]:", JSON.stringify(dataList[0]));
+    }
 
     if (!isBaselineLoaded) {
       dataList.forEach(item => {
