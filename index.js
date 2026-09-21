@@ -9,7 +9,11 @@ const processedIds = new Set();
 const processedMaintenanceIds = new Set();
 const processedItemIds = new Set();
 
-let lastNumberFourItem = null;
+// Biến lưu trữ thông tin thời gian của Số 4 gần nhất trong vòng hiện tại
+let lastNumberFourTime = null;
+
+// Biến lưu trữ thời gian dự kiến của vòng TRƯỚC (dạng chuỗi giờ:phút:giây hoặc timestamp) để so sánh độ trễ cho vòng sau
+let previousExpectedTimeStr = null;
 
 // Kiểm tra nhóm Boss Tiểu đội sát thủ
 function isTargetBoss(bossName) {
@@ -22,6 +26,12 @@ function isTargetBoss(bossName) {
 function isNumberFour(bossName) {
   if (!bossName) return false;
   return bossName.toLowerCase().includes('số 4');
+}
+
+function isCaptain(bossName) {
+  if (!bossName) return false;
+  const nameLower = bossName.toLowerCase();
+  return nameLower.includes('đội trưởng') || nameLower.includes('ginyu') || nameLower.includes('số 1');
 }
 
 // Kiểm tra thông tin "Đồ thần linh"
@@ -48,7 +58,7 @@ function isDivineItem(item) {
   );
 }
 
-// Hàm định dạng thời gian bỏ ngày tháng, chỉ giữ giờ:phút (dùng cho bảo trì hoặc thời gian dự kiến)
+// Hàm định dạng thời gian bỏ ngày tháng, chỉ giữ giờ:phút:giây
 function formatTimeWithoutDate(timeStr) {
   try {
     if (!timeStr) return "Chưa xác định";
@@ -61,6 +71,61 @@ function formatTimeWithoutDate(timeStr) {
     return `\({pad(date.getHours())}:\){pad(date.getMinutes())}:${pad(date.getSeconds())}`;
   } catch (e) {
     return timeStr;
+  }
+}
+
+// Tính thời gian dự kiến (Cộng thêm 15 phút từ mốc Số 4)
+function calculatePrediction(numberFourTimeStr) {
+  try {
+    if (!numberFourTimeStr) return null;
+    const actualDate = new Date(numberFourTimeStr.replace(/-/g, '/'));
+    if (isNaN(actualDate.getTime())) return null;
+
+    const expectedDate = new Date(actualDate.getTime() + 15 * 60 * 1000);
+    const pad = (n) => String(n).padStart(2, '0');
+    return `\({pad(expectedDate.getHours())}:\){pad(expectedDate.getMinutes())}:${pad(expectedDate.getSeconds())}`;
+  } catch (e) {
+    return null;
+  }
+}
+
+// Hàm so sánh thời gian thực tế xuất hiện của Số 4 đợt mới với dự kiến cũ
+function calculateDelayWithPrevious(newNumberFourTimeStr, oldExpectedTimeStr) {
+  try {
+    if (!newNumberFourTimeStr || !oldExpectedTimeStr) return null;
+
+    // Lấy ngày hiện tại ghép với giờ:phút:giây của thời gian thực tế mới và dự kiến cũ để quy đổi ra đối tượng Date so sánh
+    const now = new Date();
+    const datePart = `\({now.getFullYear()}/\){String(now.getMonth() + 1).padStart(2, '0')}/${String(now.getDate()).padStart(2, '0')}`;
+    
+    // Tách lấy phần giờ:phút:giây chuẩn từ chuỗi thời gian thực tế mới
+    const newFormatted = formatTimeWithoutDate(newNumberFourTimeStr);
+    
+    const realDate = new Date(`\({datePart}\){newFormatted}`);
+    const expectedDate = new Date(`\({datePart}\){oldExpectedTimeStr}`);
+
+    if (isNaN(realDate.getTime()) || isNaN(expectedDate.getTime())) return null;
+
+    const diffMs = realDate.getTime() - expectedDate.getTime();
+    const diffSec = Math.floor(Math.abs(diffMs) / 1000);
+
+    if (diffSec === 0) return "đúng giờ so với dự kiến trước";
+
+    const mins = Math.floor(diffSec / 60);
+    const secs = diffSec % 60;
+
+    let timeText = "";
+    if (mins > 0 && secs > 0) timeText = `\({mins} phút\){secs} giây`;
+    else if (mins > 0) timeText = `${mins} phút`;
+    else timeText = `${secs} giây`;
+
+    if (diffMs > 0) {
+      return `trễ hơn so với dự kiến trước ${timeText}`;
+    } else {
+      return `sớm hơn so với dự kiến trước ${timeText}`;
+    }
+  } catch (e) {
+    return null;
   }
 }
 
@@ -79,14 +144,16 @@ function extractInfo(item) {
   const serverName = item.server || "15 sao";
   const timeStr = item.time || new Date().toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" });
 
+  // Ghi nhận mốc Số 4
   if (isNumberFour(bossName)) {
-    lastNumberFourItem = { bossName, mapName, serverName, timeStr };
+    lastNumberFourTime = timeStr;
+    console.log(`[Tracker] Đã ghi nhận mốc thời gian của Số 4: ${timeStr}`);
   }
 
   return { bossName, mapName, serverName, timeStr };
 }
 
-// Gửi tin nhắn thông báo Boss (Đã thêm lại thời gian dự kiến & delay, bỏ ngày tháng)
+// Gửi tin nhắn thông báo Boss
 async function sendDiscordEmbed(item) {
   const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
   if (!webhookUrl) return;
@@ -94,34 +161,86 @@ async function sendDiscordEmbed(item) {
   const info = extractInfo(item);
   if (!isTargetBoss(info.bossName)) return;
 
-  // Tính toán hoặc hiển thị thời gian dự kiến / delay đã bỏ ngày tháng
-  const cleanTime = formatTimeWithoutDate(info.timeStr);
+  // Kiểm tra nếu con Boss này là "Số 4" và trước đó chúng ta đã có một mốc dự kiến cũ
+  let delayComment = null;
+  if (isNumberFour(info.bossName) && previousExpectedTimeStr) {
+    delayComment = calculateDelayWithPrevious(info.timeStr, previousExpectedTimeStr);
+  }
 
-  const payload = {
+  // Tạo các fields thông báo Boss ra
+  const fields = [
+    { name: "👹 Tên Boss", value: `**${info.bossName}**`, inline: true },
+    { name: "🗺️ Bản đồ", value: `**${info.mapName}**`, inline: true },
+    { name: "🌐 Máy chủ", value: `**${info.serverName}**`, inline: true },
+    { name: "⏰ Thời gian ra", value: `\`${info.timeStr}\``, inline: false }
+  ];
+
+  // Nếu có chú thích độ trễ so với dự kiến trước, gắn trực tiếp vào thông báo Boss Số 4 xuất hiện
+  if (delayComment) {
+    fields.push({ name: "📊 Đánh giá độ trễ", value: `*(${delayComment})*`, inline: false });
+  }
+
+  fields.push({ name: "📞 Hỗ trợ Zalo", value: "Lỗi thông báo liên hệ Zalo **0366 517 900** (Han Đây)", inline: false });
+
+  const payloadBoss = {
     username: "Han Ne",
     avatar_url: "https://i.imgur.com/4M34hi2.png",
     embeds: [
       {
         title: "🚨 BOSS TIỂU ĐỘI SÁT THỦ XUẤT HIỆN! 🚨",
         color: 16724736,
-        fields: [
-          { name: "👹 Tên Boss", value: `**${info.bossName}**`, inline: true },
-          { name: "🗺️ Bản đồ", value: `**${info.mapName}**`, inline: true },
-          { name: "🌐 Máy chủ", value: `**${info.serverName}**`, inline: true },
-          { name: "⏰ Thời gian ra", value: `\`${info.timeStr}\``, inline: false },
-          { name: "⏳ Dự kiến / Trễ (Delay)", value: `Dự kiến 15 phút - Trễ 7 phút 30 giây (\`${cleanTime}\`)`, inline: false },
-          { name: "📞 Hỗ trợ Zalo", value: "Lỗi thông báo liên hệ Zalo **0366 517 900** (Han Đây)", inline: false }
-        ],
+        fields: fields,
         footer: { text: "⚔️ Hệ Thống Báo Boss 15 Sao ⚔️" }
       }
     ]
   };
 
   try {
-    await axios.post(webhookUrl, payload);
+    await axios.post(webhookUrl, payloadBoss);
     console.log(`[Discord Send] Đã gửi thông báo Boss: ${info.bossName}`);
   } catch (err) {
     console.error("[Discord Error] Lỗi khi gửi webhook Boss:", err.message);
+  }
+
+  // Khi Đội trưởng xuất hiện: Tính toán thời gian dự kiến vòng tiếp theo và lưu lại vào `previousExpectedTimeStr`
+  if (isCaptain(info.bossName)) {
+    if (lastNumberFourTime) {
+      const expectedTimeStr = calculatePrediction(lastNumberFourTime);
+      const formattedNumberFourTime = formatTimeWithoutDate(lastNumberFourTime);
+
+      if (expectedTimeStr) {
+        // Lưu lại mốc dự kiến này để dùng so sánh cho Số 4 của vòng kế tiếp
+        previousExpectedTimeStr = expectedTimeStr;
+
+        const payloadPrediction = {
+          username: "Han Ne",
+          avatar_url: "https://i.imgur.com/4M34hi2.png",
+          embeds: [
+            {
+              title: "⏳ THỜI GIAN DỰ KIẾN VÒNG TIẾP THEO ⏳",
+              color: 3447003,
+              fields: [
+                { name: "📌 Số 4 xuất hiện", value: `\`${formattedNumberFourTime}\``, inline: true },
+                { name: "⏰ Dự kiến ra tiếp", value: `**${expectedTimeStr}**`, inline: true },
+                { name: "📞 Hỗ trợ Zalo", value: "Lỗi thông báo liên hệ Zalo **0366 517 900** (Han Đây)", inline: false }
+              ],
+              footer: { text: "⚔️ Hệ Thống Dự Kiến 15 Sao ⚔️" }
+            }
+          ]
+        };
+
+        setTimeout(async () => {
+          try {
+            await axios.post(webhookUrl, payloadPrediction);
+            console.log(`[Discord Prediction] Đã gửi tin nhắn dự kiến (Đã lưu mốc: ${expectedTimeStr}) thành công.`);
+          } catch (err) {
+            console.error("[Discord Error Prediction] Lỗi:", err.message);
+          }
+        }, 1000);
+      }
+    } else {
+      console.log(`[Discord Prediction Warning] Đội trưởng ra nhưng chưa tìm thấy mốc thời gian của Số 4.`);
+    }
   }
 }
 
@@ -224,7 +343,7 @@ async function fetchBossApi() {
           }
         });
         isBaselineLoaded = true;
-        console.log("[System] Đã tải xong dữ liệu gốc. Đồ thần linh cũ sẽ được đẩy lại để test room...");
+        console.log("[System] Đã tải xong dữ liệu gốc.");
       } else {
         const newItems = [];
         for (const item of listData) {
