@@ -52,7 +52,23 @@ function formatMaintenanceTime(timeStr) {
   }
 }
 
-// Hàm tính toán thời gian cho Boss (ĐÃ CỐ ĐỊNH KHOẢNG TRẮNG GIỮA NGÀY VÀ GIỜ)
+// Hàm lấy riêng phần Giờ:Phút:Giây để hiển thị gọn gàng
+function extractTimeOnly(timeStr) {
+  try {
+    const date = new Date(timeStr.replace(/-/g, '/'));
+    if (isNaN(date.getTime())) {
+      // Nếu chuỗi có định dạng YYYY-MM-DD HH:mm:ss thì cắt lấy phần sau khoảng trắng
+      const parts = timeStr.trim().split(' ');
+      return parts.length > 1 ? parts[1] : timeStr;
+    }
+    const pad = (n) => String(n).padStart(2, '0');
+    return `\({pad(date.getHours())}:\){pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+  } catch (e) {
+    return timeStr;
+  }
+}
+
+// Hàm tính toán thời gian cho Boss
 function calculateNextTime(timeStr, addMins, addSecs = 0) {
   try {
     const date = new Date(timeStr.replace(/-/g, '/'));
@@ -88,9 +104,9 @@ function getDelayNote(actualTimeStr, expectedTimeStr) {
 
     if (diffSecs === 0) return " (Đúng giờ dự kiến)";
     if (diffSecs > 0) {
-      return ` ⚠️ *(Boss ra trễ hơn ${diffSecs} giây)*`;
+      return ` ⚠️ *(Trễ hơn ${diffSecs} giây)*`;
     } else {
-      return ` 🟢 *(Boss ra sớm hơn ${Math.abs(diffSecs)} giây)*`;
+      return ` 🟢 *(Sớm hơn ${Math.abs(diffSecs)} giây)*`;
     }
   } catch (e) {
     return "";
@@ -161,16 +177,20 @@ async function sendDiscordEmbed(item) {
   }
 }
 
-// Gửi tin nhắn tổng kết mốc Số 4 (Đã chuẩn hóa biến và template string)
+// Gửi tin nhắn tổng kết mốc Số 4 (Đã ẩn ngày tháng ở mục dự kiến, chỉ giữ lại giờ:phút:giây)
 async function sendFinalSummaryWebhook(webhookUrl, currentTime, currentMap) {
   const baseTime = lastNumberFourItem ? lastNumberFourItem.timeStr : currentTime;
   const baseMap = lastNumberFourItem ? lastNumberFourItem.mapName : currentMap;
   const labelNote = lastNumberFourItem ? "🟢 Số 4 ra lúc" : "⚠️ Mốc tham chiếu (Chưa thấy Số 4)";
 
-  const estimatedNext = calculateNextTime(baseTime, 15, 0);      
-  const estimatedSupport = calculateNextTime(baseTime, 7, 30);  
+  const estimatedNextFull = calculateNextTime(baseTime, 15, 0);      
+  const estimatedSupportFull = calculateNextTime(baseTime, 7, 30);  
   
-  const delayNote = getDelayNote(currentTime, estimatedNext);
+  // Chỉ lấy phần giờ phút giây để hiển thị cho gọn
+  const estimatedNext = extractTimeOnly(estimatedNextFull);
+  const estimatedSupport = extractTimeOnly(estimatedSupportFull);
+
+  const delayNote = getDelayNote(currentTime, estimatedNextFull);
 
   const summaryPayload = {
     username: "millims15",
@@ -273,7 +293,7 @@ async function sendDivineItemWebhook(item) {
 async function fetchBossApi() {
   try {
     const res = await axios.get('https://service.dungpham.com.vn/api/thong-bao', {
-      params: { server: '15 sao', size: 50, sort: 'id,desc' },
+      params: { server: '15 sao', size: 100, sort: 'id,desc' },
       headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' },
       timeout: 10000
     });
@@ -347,9 +367,9 @@ async function fetchBossApi() {
       }
     }
 
-    if (processedIds.size > 500) {
+    if (processedIds.size > 800) {
       const arr = Array.from(processedIds);
-      arr.slice(0, arr.length - 200).forEach(id => processedIds.delete(id));
+      arr.slice(0, arr.length - 400).forEach(id => processedIds.delete(id));
     }
 
   } catch (error) {
