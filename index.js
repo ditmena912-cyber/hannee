@@ -10,6 +10,7 @@ const processedMaintenanceIds = new Set();
 const processedItemIds = new Set();
 
 let lastNumberFourTime = null;
+let lastNumberFourMap = null; // Thêm biến lưu bản đồ của Số 4
 let previousExpectedTimeStr = null;
 let currentDelayComment = null;
 
@@ -54,7 +55,6 @@ function isDivineItem(item) {
   );
 }
 
-// Dùng nối chuỗi an toàn tuyệt đối, không lo lỗi ngoặc
 function formatTimeWithoutDate(timeStr) {
   try {
     if (!timeStr) return "Chưa xác định";
@@ -141,6 +141,7 @@ function extractInfo(item) {
 
   if (isNumberFour(bossName)) {
     lastNumberFourTime = timeStr;
+    lastNumberFourMap = mapName; // Lưu lại map của Số 4
   }
 
   return { bossName, mapName, serverName, timeStr };
@@ -195,13 +196,15 @@ async function sendDiscordEmbed(item) {
     if (lastNumberFourTime) {
       const expectedTimeStr = calculatePrediction(lastNumberFourTime);
       const formattedNumberFourTime = formatTimeWithoutDate(lastNumberFourTime);
+      const predictionMap = lastNumberFourMap || "Không rõ";
 
       if (expectedTimeStr) {
         previousExpectedTimeStr = expectedTimeStr;
 
         const predictionFields = [
           { name: "📌 Số 4 xuất hiện", value: "`" + formattedNumberFourTime + "`", inline: true },
-          { name: "⏰ Dự kiến ra tiếp", value: "**" + expectedTimeStr + "**", inline: true }
+          { name: "🗺️ Bản đồ Số 4", value: "**" + predictionMap + "**", inline: true },
+          { name: "⏰ Dự kiến ra tiếp", value: "**" + expectedTimeStr + "**", inline: false }
         ];
 
         if (currentDelayComment) {
