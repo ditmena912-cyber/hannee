@@ -11,7 +11,7 @@ const processedItemIds = new Set();
 
 let lastNumberFourTime = null;
 let previousExpectedTimeStr = null;
-let currentDelayComment = null; // Biến lưu tạm độ trễ để đưa vào tin nhắn dự kiến
+let currentDelayComment = null;
 
 function isTargetBoss(bossName) {
   if (!bossName) return false;
@@ -151,7 +151,7 @@ async function sendDiscordEmbed(item) {
   let delayComment = null;
   if (isNumberFour(info.bossName) && previousExpectedTimeStr) {
     delayComment = calculateDelayWithPrevious(info.timeStr, previousExpectedTimeStr);
-    currentDelayComment = delayComment; // Lưu lại để dùng cho tin nhắn dự kiến
+    currentDelayComment = delayComment;
   }
 
   const fields = [
@@ -194,7 +194,6 @@ async function sendDiscordEmbed(item) {
       if (expectedTimeStr) {
         previousExpectedTimeStr = expectedTimeStr;
 
-        // Xây dựng danh sách trường cho tin nhắn dự kiến, chèn thêm độ trễ nếu có
         const predictionFields = [
           { name: "📌 Số 4 xuất hiện", value: `\`${formattedNumberFourTime}\``, inline: true },
           { name: "⏰ Dự kiến ra tiếp", value: `**${expectedTimeStr}**`, inline: true }
