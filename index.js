@@ -24,10 +24,28 @@ function isNumberFour(bossName) {
   return bossName.toLowerCase().includes('số 4');
 }
 
-// Kiểm tra thông tin "Đồ thần linh"
+// Kiểm tra thông tin "Đồ thần linh" (Bắt theo danh mục hoặc tên trang bị chứa chữ Thần)
 function isDivineItem(item) {
-  const text = (item.value || item.title || item.bossName || "").toLowerCase();
-  return text.includes('thần linh') || text.includes('đồ thần linh') || text.includes('trang bị thần linh');
+  const category = (item.category || item.type || "").toLowerCase();
+  const title = (item.title || "").toLowerCase();
+  const value = (item.value || "").toLowerCase();
+  const equipment = (item.equipment || item.trangbi || "").toLowerCase();
+  
+  const combined = `\({category}\){title} \({value}\){equipment}`;
+  
+  return (
+    combined.includes('thần linh') || 
+    combined.includes('đồ thần linh') || 
+    combined.includes('trang bị thần linh') ||
+    combined.includes('thần xayda') ||
+    combined.includes('thần trái đất') ||
+    combined.includes('thần namếc') ||
+    combined.includes('quần thần') ||
+    combined.includes('áo thần') ||
+    combined.includes('găng thần') ||
+    combined.includes('giày thần') ||
+    combined.includes('nhẫn thần')
+  );
 }
 
 // Hàm định dạng thời gian DÀNH RIÊNG CHO BẢO TRÌ: Loại bỏ giây, chỉ giữ lại phút để chống spam
@@ -144,8 +162,10 @@ async function sendDivineItemWebhook(item) {
   const webhookUrl = process.env.DISCORD_WEBHOOK_URL_2 || process.env.DISCORD_WEBHOOK_URL;
   if (!webhookUrl) return;
 
-  const rawTime = item.time || new Date().toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" });
-  const contentText = item.value || item.title || "Phát hiện rơi Đồ Thần Linh!";
+  const rawTime = item.time || item.thoiGian || new Date().toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" });
+  const player = item.player || item.nguoiChoi || "Không rõ";
+  const equipmentName = item.equipment || item.trangbi || item.value || item.title || "Đồ thần linh";
+  const mapName = item.map || item.mapName || "Không rõ";
   const serverName = item.server || "15 sao";
 
   const divinePayload = {
@@ -157,8 +177,10 @@ async function sendDivineItemWebhook(item) {
         color: 65535,
         fields: [
           { name: "🌐 Máy chủ", value: `**${serverName}**`, inline: true },
+          { name: "👤 Người chơi", value: `**${player}**`, inline: true },
+          { name: "🎁 Trang bị", value: `**${equipmentName}**`, inline: false },
+          { name: "🗺️ Bản đồ", value: `**${mapName}**`, inline: false },
           { name: "⏰ Thời gian", value: `\`${rawTime}\``, inline: false },
-          { name: "🎁 Chi tiết", value: String(contentText), inline: false },
           { name: "📞 Hỗ trợ Zalo", value: "Lỗi thông báo liên hệ Zalo **0366 517 900** (Han Đây)", inline: false }
         ],
         footer: { text: "⚔️ Hệ Thống Báo Đồ Thần Linh 15 Sao ⚔️" }
@@ -200,8 +222,7 @@ async function fetchBossApi() {
             processedMaintenanceIds.add(`maint_${item.id || minuteKey}`);
           }
 
-          // RIÊNG ĐỒ THẦN LINH: KHÔNG add vào processedItemIds ở lúc baseline khởi động, 
-          // để bot tiến hành quét và bắn lại các món đồ thần linh trong 3 tiếng trước sang room mới cho bạn test.
+          // Riêng Đồ thần linh KHÔNG add vội vào processedItemIds ở lúc baseline để bot tiến hành đẩy lại tin cũ test room
         });
         isBaselineLoaded = true;
         console.log("[System] Đã tải xong dữ liệu gốc. Đồ thần linh cũ sẽ được đẩy lại để test room...");
