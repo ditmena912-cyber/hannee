@@ -54,6 +54,7 @@ function isDivineItem(item) {
   );
 }
 
+// Dùng nối chuỗi an toàn tuyệt đối, không lo lỗi ngoặc
 function formatTimeWithoutDate(timeStr) {
   try {
     if (!timeStr) return "Chưa xác định";
@@ -62,8 +63,10 @@ function formatTimeWithoutDate(timeStr) {
       return timeStr.replace(/^\d{4}[-/]\d{1,2}[-/]\d{1,2}\s*/, '');
     }
 
-    const pad = (n) => String(n).padStart(2, '0');
-    return `\({pad(date.getHours())}:\){pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+    const h = String(date.getHours()).padStart(2, '0');
+    const m = String(date.getMinutes()).padStart(2, '0');
+    const s = String(date.getSeconds()).padStart(2, '0');
+    return h + ":" + m + ":" + s;
   } catch (e) {
     return timeStr;
   }
@@ -76,8 +79,10 @@ function calculatePrediction(numberFourTimeStr) {
     if (isNaN(actualDate.getTime())) return null;
 
     const expectedDate = new Date(actualDate.getTime() + 15 * 60 * 1000);
-    const pad = (n) => String(n).padStart(2, '0');
-    return `\({pad(expectedDate.getHours())}:\){pad(expectedDate.getMinutes())}:${pad(expectedDate.getSeconds())}`;
+    const h = String(expectedDate.getHours()).padStart(2, '0');
+    const m = String(expectedDate.getMinutes()).padStart(2, '0');
+    const s = String(expectedDate.getSeconds()).padStart(2, '0');
+    return h + ":" + m + ":" + s;
   } catch (e) {
     return null;
   }
@@ -88,11 +93,11 @@ function calculateDelayWithPrevious(newNumberFourTimeStr, oldExpectedTimeStr) {
     if (!newNumberFourTimeStr || !oldExpectedTimeStr) return null;
 
     const now = new Date();
-    const datePart = `\({now.getFullYear()}/\){String(now.getMonth() + 1).padStart(2, '0')}/${String(now.getDate()).padStart(2, '0')}`;
+    const datePart = now.getFullYear() + "/" + String(now.getMonth() + 1).padStart(2, '0') + "/" + String(now.getDate()).padStart(2, '0');
     const newFormatted = formatTimeWithoutDate(newNumberFourTimeStr);
     
-    const realDate = new Date(`\({datePart}\){newFormatted}`);
-    const expectedDate = new Date(`\({datePart}\){oldExpectedTimeStr}`);
+    const realDate = new Date(datePart + " " + newFormatted);
+    const expectedDate = new Date(datePart + " " + oldExpectedTimeStr);
 
     if (isNaN(realDate.getTime()) || isNaN(expectedDate.getTime())) return null;
 
@@ -105,14 +110,14 @@ function calculateDelayWithPrevious(newNumberFourTimeStr, oldExpectedTimeStr) {
     const secs = diffSec % 60;
 
     let timeText = "";
-    if (mins > 0 && secs > 0) timeText = `\({mins} phút\){secs} giây`;
-    else if (mins > 0) timeText = `${mins} phút`;
-    else timeText = `${secs} giây`;
+    if (mins > 0 && secs > 0) timeText = mins + " phút " + secs + " giây";
+    else if (mins > 0) timeText = mins + " phút";
+    else timeText = secs + " giây";
 
     if (diffMs > 0) {
-      return `trễ hơn so với dự kiến trước ${timeText}`;
+      return "trễ hơn so với dự kiến trước " + timeText;
     } else {
-      return `sớm hơn so với dự kiến trước ${timeText}`;
+      return "sớm hơn so với dự kiến trước " + timeText;
     }
   } catch (e) {
     return null;
@@ -155,14 +160,14 @@ async function sendDiscordEmbed(item) {
   }
 
   const fields = [
-    { name: "👹 Tên Boss", value: `**${info.bossName}**`, inline: true },
-    { name: "🗺️ Bản đồ", value: `**${info.mapName}**`, inline: true },
-    { name: "🌐 Máy chủ", value: `**${info.serverName}**`, inline: true },
-    { name: "⏰ Thời gian ra", value: `\`${info.timeStr}\``, inline: false }
+    { name: "👹 Tên Boss", value: "**" + info.bossName + "**", inline: true },
+    { name: "🗺️ Bản đồ", value: "**" + info.mapName + "**", inline: true },
+    { name: "🌐 Máy chủ", value: "**" + info.serverName + "**", inline: true },
+    { name: "⏰ Thời gian ra", value: "`" + info.timeStr + "`", inline: false }
   ];
 
   if (delayComment) {
-    fields.push({ name: "📊 Đánh giá độ trễ", value: `*(${delayComment})*`, inline: false });
+    fields.push({ name: "📊 Đánh giá độ trễ", value: "*(" + delayComment + ")*", inline: false });
   }
 
   fields.push({ name: "📞 Hỗ trợ Zalo", value: "Lỗi thông báo liên hệ Zalo **0366 517 900** (Han Đây)", inline: false });
@@ -195,12 +200,12 @@ async function sendDiscordEmbed(item) {
         previousExpectedTimeStr = expectedTimeStr;
 
         const predictionFields = [
-          { name: "📌 Số 4 xuất hiện", value: `\`${formattedNumberFourTime}\``, inline: true },
-          { name: "⏰ Dự kiến ra tiếp", value: `**${expectedTimeStr}**`, inline: true }
+          { name: "📌 Số 4 xuất hiện", value: "`" + formattedNumberFourTime + "`", inline: true },
+          { name: "⏰ Dự kiến ra tiếp", value: "**" + expectedTimeStr + "**", inline: true }
         ];
 
         if (currentDelayComment) {
-          predictionFields.push({ name: "📊 Đánh giá độ trễ", value: `*(${currentDelayComment})*`, inline: false });
+          predictionFields.push({ name: "📊 Đánh giá độ trễ", value: "*(" + currentDelayComment + ")*", inline: false });
         }
 
         predictionFields.push({ name: "📞 Hỗ trợ Zalo", value: "Lỗi thông báo liên hệ Zalo **0366 517 900** (Han Đây)", inline: false });
@@ -247,8 +252,8 @@ async function sendMaintenanceWebhook(item) {
         title: "🛠️ THÔNG BÁO BẢO TRÌ HỆ THỐNG 🛠️",
         color: 16776960,
         fields: [
-          { name: "🌐 Máy chủ", value: `**${serverName}**`, inline: true },
-          { name: "⏰ Thời gian", value: `\`${formattedTime}\``, inline: false },
+          { name: "🌐 Máy chủ", value: "**" + serverName + "**", inline: true },
+          { name: "⏰ Thời gian", value: "`" + formattedTime + "`", inline: false },
           { name: "📝 Nội dung", value: String(contentText), inline: false },
           { name: "📞 Hỗ trợ Zalo", value: "Lỗi thông báo liên hệ Zalo **0366 517 900** (Han Đây)", inline: false }
         ],
@@ -282,11 +287,11 @@ async function sendDivineItemWebhook(item) {
         title: "✨ THÔNG BÁO RƠI ĐỒ THẦN LINH ✨",
         color: 65535,
         fields: [
-          { name: "🌐 Máy chủ", value: `**${serverName}**`, inline: true },
-          { name: "👤 Người chơi", value: `**${player}**`, inline: true },
-          { name: "🎁 Trang bị", value: `**${equipmentName}**`, inline: false },
-          { name: "🗺️ Bản đồ", value: `**${mapName}**`, inline: false },
-          { name: "⏰ Thời gian", value: `\`${rawTime}\``, inline: false },
+          { name: "🌐 Máy chủ", value: "**" + serverName + "**", inline: true },
+          { name: "👤 Người chơi", value: "**" + player + "**", inline: true },
+          { name: "🎁 Trang bị", value: "**" + equipmentName + "**", inline: false },
+          { name: "🗺️ Bản đồ", value: "**" + mapName + "**", inline: false },
+          { name: "⏰ Thời gian", value: "`" + rawTime + "`", inline: false },
           { name: "📞 Hỗ trợ Zalo", value: "Lỗi thông báo liên hệ Zalo **0366 517 900** (Han Đây)", inline: false }
         ],
         footer: { text: "⚔️ Hệ Thống Báo Đồ Thần Linh 15 Sao ⚔️" }
@@ -313,7 +318,7 @@ async function fetchBossApi() {
     if (Array.isArray(listData)) {
       if (!isBaselineLoaded) {
         listData.forEach(item => {
-          const id = item.id || `\({item.bossName || item.title}_\){item.time}`;
+          const id = item.id || (item.bossName || item.title) + "_" + item.time;
           processedIds.add(id);
 
           const category = String(item.category || item.type || "").toLowerCase();
@@ -321,14 +326,14 @@ async function fetchBossApi() {
           
           if (category.includes('bảo trì') || contentStr.includes('bảo trì')) {
             const minuteKey = formatTimeWithoutDate(item.time || "");
-            processedMaintenanceIds.add(`maint_${item.id || minuteKey}`);
+            processedMaintenanceIds.add("maint_" + (item.id || minuteKey));
           }
         });
         isBaselineLoaded = true;
       } else {
         const newItems = [];
         for (const item of listData) {
-          const id = item.id || `\({item.bossName || item.title}_\){item.time}`;
+          const id = item.id || (item.bossName || item.title) + "_" + item.time;
           const isServer15 = !item.server || String(item.server).includes('15');
           if (!processedIds.has(id) && isServer15) {
             processedIds.add(id);
@@ -343,14 +348,14 @@ async function fetchBossApi() {
           if (category.includes('bảo trì') || contentStr.includes('bảo trì')) {
             const rawTime = newItem.time || "";
             const minuteKey = formatTimeWithoutDate(rawTime);
-            const maintId = `maint_${newItem.id || minuteKey}`;
+            const maintId = "maint_" + (newItem.id || minuteKey);
 
             if (!processedMaintenanceIds.has(maintId)) {
               processedMaintenanceIds.add(maintId);
               await sendMaintenanceWebhook(newItem);
             }
           } else if (isDivineItem(newItem)) {
-            const divineId = `divine_${newItem.id || newItem.time}`;
+            const divineId = "divine_" + (newItem.id || newItem.time);
             if (!processedItemIds.has(divineId)) {
               processedItemIds.add(divineId);
               await sendDivineItemWebhook(newItem);
@@ -380,6 +385,6 @@ app.get('/', (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`Server đang chạy tại port ${PORT}`);
+  console.log("Server đang chạy tại port " + PORT);
   fetchBossApi();
 });
