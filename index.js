@@ -45,7 +45,7 @@ function formatMaintenanceTime(timeStr) {
   }
 }
 
-// Hàm tính toán thời gian cho Boss (GIỮ NGUYÊN HOÀN TOÀN CŨ - CÓ GIÂY)
+// Hàm tính toán thời gian cho Boss (Thêm khoảng trắng phân tách ngày và giờ để dễ nhìn)
 function calculateNextTime(timeStr, addMins, addSecs = 0) {
   try {
     const date = new Date(timeStr.replace(/-/g, '/'));
@@ -55,9 +55,32 @@ function calculateNextTime(timeStr, addMins, addSecs = 0) {
     date.setSeconds(date.getSeconds() + addSecs);
 
     const pad = (n) => String(n).padStart(2, '0');
+    // Thêm khoảng trắng giữa phần ngày và phần giờ (YYYY-MM-DD HH:mm:ss)
     return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
   } catch (e) {
     return "Không xác định";
+  }
+}
+
+// Hàm tính toán khoảng cách thời gian chênh lệch (giây) giữa thực tế và dự kiến
+function getDelayNote(actualTimeStr, expectedTimeStr) {
+  try {
+    const actual = new Date(actualTimeStr.replace(/-/g, '/'));
+    const expected = new Date(expectedTimeStr.replace(/-/g, '/'));
+
+    if (isNaN(actual.getTime()) || isNaN(expected.getTime())) return "";
+
+    const diffMs = actual.getTime() - expected.getTime();
+    const diffSecs = Math.round(diffMs / 1000);
+
+    if (diffSecs === 0) return " (Đúng giờ dự kiến)";
+    if (diffSecs > 0) {
+      return ` ⚠️ *(Boss ra trễ hơn ${diffSecs} giây so với dự kiến)*`;
+    } else {
+      return ` 🟢 *(Boss ra sớm hơn ${Math.abs(diffSecs)} giây so với dự kiến)*`;
+    }
+  } catch (e) {
+    return "";
   }
 }
 
@@ -85,7 +108,7 @@ function extractInfo(item) {
   return { bossName, mapName, serverName, timeStr, supportSpawnTime };
 }
 
-// Gửi tin nhắn thông báo Boss (GIỮ NGUYÊN CŨ)
+// Gửi tin nhắn thông báo Boss
 async function sendDiscordEmbed(item) {
   const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
   if (!webhookUrl) return;
@@ -125,14 +148,19 @@ async function sendDiscordEmbed(item) {
   }
 }
 
-// Gửi tin nhắn tổng kết mốc Số 4 (GIỮ NGUYÊN CŨ)
+// Gửi tin nhắn tổng kết mốc Số 4 (Có tính toán dự kiến và ghi chú trễ/đúng giờ)
 async function sendFinalSummaryWebhook(webhookUrl, currentTime, currentMap) {
   const baseTime = lastNumberFourItem ? lastNumberFourItem.timeStr : currentTime;
   const baseMap = lastNumberFourItem ? lastNumberFourItem.mapName : currentMap;
   const labelNote = lastNumberFourItem ? "🟢 Số 4 ra lúc" : "⚠️ Mốc tham chiếu (Chưa thấy Số 4)";
 
-  const estimatedNext = calculateNextTime(baseTime, 15, 0);     
+  // Tính toán các mốc thời gian dự kiến dựa trên mốc Số 4
+  const estimatedNext = calculateNextTime(baseTime, 15, 0);      
   const estimatedSupport = calculateNextTime(baseTime, 7, 30);  
+
+  // Tính toán thời gian dự kiến tiếp theo nếu đội trưởng ra thực tế có độ lệch
+  // (Ví dụ dựa vào mốc cơ sở tính tiến lên 15 phút để so sánh với thời gian thực tế đội trưởng ra)
+  const delayNote = getDelayNote(currentTime, estimatedNext);
 
   const summaryPayload = {
     username: "millims15",
@@ -144,6 +172,7 @@ async function sendFinalSummaryWebhook(webhookUrl, currentTime, currentMap) {
         fields: [
           { name: labelNote, value: `**${baseTime}** tại khu vực **${baseMap}**`, inline: false },
           { name: "🔮 Thời gian dự kiến xuất hiện lần sau", value: `📌 \`${estimatedNext}\` **( + 15 phút )**`, inline: false },
+          { name: "⚡ Thời gian thực tế / Chênh lệch", value: `⏰ \`${currentTime}\`${delayNote}`, inline: false },
           { name: "🛡️ Thời gian dự kiến trong giờ hỗ trợ", value: `📌 \`${estimatedSupport}\` **( + 7 phút 30 giây )**`, inline: false },
           { name: "📞 Hỗ trợ Zalo", value: "Lỗi thông báo liên hệ Zalo **0366 517 900** (Han Đây)", inline: false }
         ],
@@ -161,7 +190,7 @@ async function sendFinalSummaryWebhook(webhookUrl, currentTime, currentMap) {
   }
 }
 
-// Gửi tin nhắn thông báo Bảo trì (ĐÃ LỌC BỎ GIÂY, CHỐNG SPAM)
+// Gửi tin nhắn thông báo Bảo trì
 async function sendMaintenanceWebhook(item) {
   const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
   if (!webhookUrl) return;
@@ -199,7 +228,6 @@ async function sendMaintenanceWebhook(item) {
 
 async function fetchBossApi() {
   try {
-    // Gọi trực tiếp API lấy danh sách thông báo của máy chủ 15 sao
     const res = await axios.get('https://service.dungpham.com.vn/api/thong-bao', {
       params: { server: '15 sao', size: 50, sort: 'id,desc' },
       headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' },
@@ -213,7 +241,6 @@ async function fetchBossApi() {
           const id = item.id || `${item.bossName || item.title}_${item.time}`;
           processedIds.add(id);
 
-          // Đánh dấu bảo trì cũ
           const category = String(item.category || item.type || "").toLowerCase();
           const contentStr = String(item.value || item.title || "").toLowerCase();
           if (category.includes('bảo trì') || contentStr.includes('bảo trì')) {
@@ -235,7 +262,6 @@ async function fetchBossApi() {
         isBaselineLoaded = true;
         console.log("[System] Đã tải xong dữ liệu gốc (Baseline). Đang chờ thông báo mới...");
       } else {
-        // Xử lý các item mới xuất hiện
         const newItems = [];
         for (const item of listData) {
           const id = item.id || `${item.bossName || item.title}_${item.time}`;
@@ -247,7 +273,6 @@ async function fetchBossApi() {
         }
 
         for (const newItem of newItems.reverse()) {
-          // 1. Kiểm tra xem có phải thông báo Bảo trì không
           const category = String(newItem.category || newItem.type || "").toLowerCase();
           const contentStr = String(newItem.value || newItem.title || "").toLowerCase();
           
@@ -261,7 +286,6 @@ async function fetchBossApi() {
               await sendMaintenanceWebhook(newItem);
             }
           } else {
-            // 2. Nếu không phải bảo trì thì chạy logic Boss cũ
             await sendDiscordEmbed(newItem);
           }
         }
