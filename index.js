@@ -94,7 +94,7 @@ async function sendDiscordEmbed(item) {
   if (!isTargetBoss(info.bossName)) return;
 
   const payload = {
-    username: "millims15",
+    username: "Han Ne",
     avatar_url: "https://i.imgur.com/4M34hi2.png",
     embeds: [
       {
