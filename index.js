@@ -1,4 +1,3 @@
-const { Client, GatewayIntentBits } = require('discord.js');
 const express = require('express');
 const axios = require('axios');
 
@@ -10,15 +9,6 @@ const processedIds = new Set();
 const processedMaintenanceIds = new Set();
 
 let lastNumberFourItem = null;
-
-// Khởi tạo Discord Client với các Intent cần thiết (bao gồm đọc nội dung tin nhắn)
-const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent
-  ]
-});
 
 // Kiểm tra nhóm Boss Tiểu đội sát thủ
 function isTargetBoss(bossName) {
@@ -55,7 +45,7 @@ function formatMaintenanceTime(timeStr) {
   }
 }
 
-// Hàm tính toán thời gian cho Boss (Thêm khoảng trắng phân tách ngày và giờ)
+// Hàm tính toán thời gian cho Boss (Đã thêm khoảng trắng phân tách ngày và giờ)
 function calculateNextTime(timeStr, addMins, addSecs = 0) {
   try {
     const date = new Date(timeStr.replace(/-/g, '/'));
@@ -157,7 +147,7 @@ async function sendDiscordEmbed(item) {
   }
 }
 
-// Gửi tin nhắn tổng kết mốc Số 4 (Gọn gàng, chỉ kèm note trễ/sớm)
+// Gửi tin nhắn tổng kết mốc Số 4 (Gọn gàng, chỉ có note trễ/sớm)
 async function sendFinalSummaryWebhook(webhookUrl, currentTime, currentMap) {
   const baseTime = lastNumberFourItem ? lastNumberFourItem.timeStr : currentTime;
   const baseMap = lastNumberFourItem ? lastNumberFourItem.mapName : currentMap;
@@ -166,7 +156,7 @@ async function sendFinalSummaryWebhook(webhookUrl, currentTime, currentMap) {
   const estimatedNext = calculateNextTime(baseTime, 15, 0);      
   const estimatedSupport = calculateNextTime(baseTime, 7, 30);  
   
-  // Lấy câu note chênh lệch giây so với dự kiến trước đó
+  // Lấy câu note chênh lệch giây
   const delayNote = getDelayNote(currentTime, estimatedNext);
 
   const summaryPayload = {
@@ -231,47 +221,6 @@ async function sendMaintenanceWebhook(item) {
     console.error("[Discord Error Maintenance] Lỗi:", err.message);
   }
 }
-
-// Lắng nghe lệnh chat !checkboss từ người dùng trong kênh Discord
-client.on('messageCreate', async (message) => {
-  if (message.author.bot) return;
-
-  if (message.content.trim() === '!checkboss') {
-    if (!lastNumberFourItem) {
-      await message.reply("⚠️ Chưa có mốc tham chiếu Số 4 nào được ghi nhận gần đây!");
-      return;
-    }
-
-    const baseTime = lastNumberFourItem.timeStr;
-    const baseMap = lastNumberFourItem.mapName;
-    const estimatedNext = calculateNextTime(baseTime, 15, 0);      
-    const estimatedSupport = calculateNextTime(baseTime, 7, 30);  
-
-    const checkEmbed = {
-      username: "millims15",
-      avatar_url: "https://i.imgur.com/4M34hi2.png",
-      embeds: [
-        {
-          title: "🔍 TRA CỨU MỐC THỜI GIAN DỰ KIẾN (!checkboss) 🔍",
-          color: 3447003,
-          fields: [
-            { name: "🟢 Mốc Số 4 gần nhất", value: `**${baseTime}** tại khu vực **${baseMap}**`, inline: false },
-            { name: "🔮 Thời gian dự kiến xuất hiện lần sau", value: `📌 \`${estimatedNext}\` **( + 15 phút )**`, inline: false },
-            { name: "🛡️ Thời gian dự kiến trong giờ hỗ trợ", value: `📌 \`${estimatedSupport}\` **( + 7 phút 30 giây )**`, inline: false },
-            { name: "📞 Hỗ trợ Zalo", value: "Lỗi thông báo liên hệ Zalo **0366 517 900** (Han Đây)", inline: false }
-          ],
-          footer: { text: "⚔️ Hệ Thống Báo Boss 15 Sao ⚔️" }
-        }
-      ]
-    };
-
-    try {
-      await message.reply(checkEmbed);
-    } catch (err) {
-      console.error("[Discord Error Command] Lỗi khi phản hồi !checkboss:", err.message);
-    }
-  }
-});
 
 async function fetchBossApi() {
   try {
@@ -360,10 +309,3 @@ app.listen(PORT, () => {
   console.log(`Server đang chạy tại port ${PORT}`);
   fetchBossApi();
 });
-
-const discordToken = process.env.DISCORD_BOT_TOKEN;
-if (discordToken) {
-  client.login(discordToken);
-} else {
-  console.warn("[Warning] Chưa cấu hình DISCORD_BOT_TOKEN, tính năng lệnh chat sẽ không hoạt động cho đến khi được thêm.");
-}
