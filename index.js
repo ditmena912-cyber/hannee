@@ -11,6 +11,7 @@ const processedItemIds = new Set();
 
 let lastNumberFourTime = null;
 let previousExpectedTimeStr = null;
+let currentDelayComment = null; // Biến lưu tạm độ trễ để đưa vào tin nhắn dự kiến
 
 function isTargetBoss(bossName) {
   if (!bossName) return false;
@@ -150,6 +151,7 @@ async function sendDiscordEmbed(item) {
   let delayComment = null;
   if (isNumberFour(info.bossName) && previousExpectedTimeStr) {
     delayComment = calculateDelayWithPrevious(info.timeStr, previousExpectedTimeStr);
+    currentDelayComment = delayComment; // Lưu lại để dùng cho tin nhắn dự kiến
   }
 
   const fields = [
@@ -192,6 +194,18 @@ async function sendDiscordEmbed(item) {
       if (expectedTimeStr) {
         previousExpectedTimeStr = expectedTimeStr;
 
+        // Xây dựng danh sách trường cho tin nhắn dự kiến, chèn thêm độ trễ nếu có
+        const predictionFields = [
+          { name: "📌 Số 4 xuất hiện", value: `\`${formattedNumberFourTime}\``, inline: true },
+          { name: "⏰ Dự kiến ra tiếp", value: `**${expectedTimeStr}**`, inline: true }
+        ];
+
+        if (currentDelayComment) {
+          predictionFields.push({ name: "📊 Đánh giá độ trễ", value: `*(${currentDelayComment})*`, inline: false });
+        }
+
+        predictionFields.push({ name: "📞 Hỗ trợ Zalo", value: "Lỗi thông báo liên hệ Zalo **0366 517 900** (Han Đây)", inline: false });
+
         const payloadPrediction = {
           username: "Han Ne",
           avatar_url: "https://i.imgur.com/4M34hi2.png",
@@ -199,11 +213,7 @@ async function sendDiscordEmbed(item) {
             {
               title: "⏳ THỜI GIAN DỰ KIẾN VÒNG TIẾP THEO ⏳",
               color: 3447003,
-              fields: [
-                { name: "📌 Số 4 xuất hiện", value: `\`${formattedNumberFourTime}\``, inline: true },
-                { name: "⏰ Dự kiến ra tiếp", value: `**${expectedTimeStr}**`, inline: true },
-                { name: "📞 Hỗ trợ Zalo", value: "Lỗi thông báo liên hệ Zalo **0366 517 900** (Han Đây)", inline: false }
-              ],
+              fields: predictionFields,
               footer: { text: "⚔️ Hệ Thống Dự Kiến 15 Sao ⚔️" }
             }
           ]
