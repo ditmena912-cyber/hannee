@@ -39,13 +39,13 @@ function formatMaintenanceTime(timeStr) {
     }
 
     const pad = (n) => String(n).padStart(2, '0');
-    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+    return `\({date.getFullYear()}-\){pad(date.getMonth() + 1)}-\({pad(date.getDate())}\){pad(date.getHours())}:${pad(date.getMinutes())}`;
   } catch (e) {
     return timeStr;
   }
 }
 
-// Hàm tính toán thời gian cho Boss (Đã thêm khoảng trắng phân tách ngày và giờ)
+// Hàm tính toán thời gian cho Boss (Đã sửa chuẩn có khoảng trắng phân tách ngày và giờ)
 function calculateNextTime(timeStr, addMins, addSecs = 0) {
   try {
     const date = new Date(timeStr.replace(/-/g, '/'));
@@ -55,7 +55,14 @@ function calculateNextTime(timeStr, addMins, addSecs = 0) {
     date.setSeconds(date.getSeconds() + addSecs);
 
     const pad = (n) => String(n).padStart(2, '0');
-    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+    const year = date.getFullYear();
+    const month = pad(date.getMonth() + 1);
+    const day = pad(date.getDate());
+    const hours = pad(date.getHours());
+    const minutes = pad(date.getMinutes());
+    const seconds = pad(date.getSeconds());
+
+    return `\({year}-\){month}-\({day}\){hours}:\({minutes}:\){seconds}`;
   } catch (e) {
     return "Không xác định";
   }
@@ -147,7 +154,7 @@ async function sendDiscordEmbed(item) {
   }
 }
 
-// Gửi tin nhắn tổng kết mốc Số 4 (Gọn gàng, chỉ có note trễ/sớm)
+// Gửi tin nhắn tổng kết mốc Số 4
 async function sendFinalSummaryWebhook(webhookUrl, currentTime, currentMap) {
   const baseTime = lastNumberFourItem ? lastNumberFourItem.timeStr : currentTime;
   const baseMap = lastNumberFourItem ? lastNumberFourItem.mapName : currentMap;
@@ -156,7 +163,6 @@ async function sendFinalSummaryWebhook(webhookUrl, currentTime, currentMap) {
   const estimatedNext = calculateNextTime(baseTime, 15, 0);      
   const estimatedSupport = calculateNextTime(baseTime, 7, 30);  
   
-  // Lấy câu note chênh lệch giây
   const delayNote = getDelayNote(currentTime, estimatedNext);
 
   const summaryPayload = {
@@ -167,8 +173,8 @@ async function sendFinalSummaryWebhook(webhookUrl, currentTime, currentMap) {
         title: "📊 THỐNG KÊ THỜI GIAN TỪ MỐC SỐ 4 📊",
         color: 3447003,
         fields: [
-          { name: labelNote, value: `**${baseTime}** tại khu vực **${baseMap}**`, inline: false },
-          { name: "🔮 Thời gian dự kiến xuất hiện lần sau", value: `📌 \`${estimatedNext}\`${delayNote}`, inline: false },
+          { name: labelNote, value: `**\({baseTime}** tại khu vực **\){baseMap}**`, inline: false },
+          { name: "🔮 Thời gian dự kiến xuất hiện lần sau", value: `📌 \`\({estimatedNext}\`\){delayNote}`, inline: false },
           { name: "🛡️ Thời gian dự kiến trong giờ hỗ trợ", value: `📌 \`${estimatedSupport}\` **( + 7 phút 30 giây )**`, inline: false },
           { name: "📞 Hỗ trợ Zalo", value: "Lỗi thông báo liên hệ Zalo **0366 517 900** (Han Đây)", inline: false }
         ],
@@ -234,7 +240,7 @@ async function fetchBossApi() {
     if (Array.isArray(listData)) {
       if (!isBaselineLoaded) {
         listData.forEach(item => {
-          const id = item.id || `${item.bossName || item.title}_${item.time}`;
+          const id = item.id || `\({item.bossName || item.title}_\){item.time}`;
           processedIds.add(id);
 
           const category = String(item.category || item.type || "").toLowerCase();
@@ -260,7 +266,7 @@ async function fetchBossApi() {
       } else {
         const newItems = [];
         for (const item of listData) {
-          const id = item.id || `${item.bossName || item.title}_${item.time}`;
+          const id = item.id || `\({item.bossName || item.title}_\){item.time}`;
           const isServer15 = !item.server || String(item.server).includes('15');
           if (!processedIds.has(id) && isServer15) {
             processedIds.add(id);
