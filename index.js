@@ -12,7 +12,7 @@ const processedItemIds = new Set();
 // Biến lưu trữ thông tin thời gian của Số 4 gần nhất trong vòng hiện tại
 let lastNumberFourTime = null;
 
-// Biến lưu trữ thời gian dự kiến của vòng TRƯỚC (dạng chuỗi giờ:phút:giây hoặc timestamp) để so sánh độ trễ cho vòng sau
+// Biến lưu trữ thời gian dự kiến của vòng TRƯỚC (dạng chuỗi giờ:phút:giây) để so sánh độ trễ cho vòng sau
 let previousExpectedTimeStr = null;
 
 // Kiểm tra nhóm Boss Tiểu đội sát thủ
@@ -94,11 +94,8 @@ function calculateDelayWithPrevious(newNumberFourTimeStr, oldExpectedTimeStr) {
   try {
     if (!newNumberFourTimeStr || !oldExpectedTimeStr) return null;
 
-    // Lấy ngày hiện tại ghép với giờ:phút:giây của thời gian thực tế mới và dự kiến cũ để quy đổi ra đối tượng Date so sánh
     const now = new Date();
     const datePart = `\({now.getFullYear()}/\){String(now.getMonth() + 1).padStart(2, '0')}/${String(now.getDate()).padStart(2, '0')}`;
-    
-    // Tách lấy phần giờ:phút:giây chuẩn từ chuỗi thời gian thực tế mới
     const newFormatted = formatTimeWithoutDate(newNumberFourTimeStr);
     
     const realDate = new Date(`\({datePart}\){newFormatted}`);
@@ -161,13 +158,12 @@ async function sendDiscordEmbed(item) {
   const info = extractInfo(item);
   if (!isTargetBoss(info.bossName)) return;
 
-  // Kiểm tra nếu con Boss này là "Số 4" và trước đó chúng ta đã có một mốc dự kiến cũ
+  // Kiểm tra nếu con Boss xuất hiện là "Số 4" và trước đó đã có mốc dự kiến cũ -> Tính độ trễ
   let delayComment = null;
   if (isNumberFour(info.bossName) && previousExpectedTimeStr) {
     delayComment = calculateDelayWithPrevious(info.timeStr, previousExpectedTimeStr);
   }
 
-  // Tạo các fields thông báo Boss ra
   const fields = [
     { name: "👹 Tên Boss", value: `**${info.bossName}**`, inline: true },
     { name: "🗺️ Bản đồ", value: `**${info.mapName}**`, inline: true },
@@ -175,7 +171,6 @@ async function sendDiscordEmbed(item) {
     { name: "⏰ Thời gian ra", value: `\`${info.timeStr}\``, inline: false }
   ];
 
-  // Nếu có chú thích độ trễ so với dự kiến trước, gắn trực tiếp vào thông báo Boss Số 4 xuất hiện
   if (delayComment) {
     fields.push({ name: "📊 Đánh giá độ trễ", value: `*(${delayComment})*`, inline: false });
   }
@@ -202,15 +197,14 @@ async function sendDiscordEmbed(item) {
     console.error("[Discord Error] Lỗi khi gửi webhook Boss:", err.message);
   }
 
-  // Khi Đội trưởng xuất hiện: Tính toán thời gian dự kiến vòng tiếp theo và lưu lại vào `previousExpectedTimeStr`
+  // Khi Đội trưởng xuất hiện: Tính khung giờ dự kiến vòng tiếp theo và lưu lại
   if (isCaptain(info.bossName)) {
     if (lastNumberFourTime) {
       const expectedTimeStr = calculatePrediction(lastNumberFourTime);
       const formattedNumberFourTime = formatTimeWithoutDate(lastNumberFourTime);
 
       if (expectedTimeStr) {
-        // Lưu lại mốc dự kiến này để dùng so sánh cho Số 4 của vòng kế tiếp
-        previousExpectedTimeStr = expectedTimeStr;
+        previousExpectedTimeStr = expectedTimeStr; // Lưu lại để so sánh ở vòng sau
 
         const payloadPrediction = {
           username: "Han Ne",
@@ -232,7 +226,7 @@ async function sendDiscordEmbed(item) {
         setTimeout(async () => {
           try {
             await axios.post(webhookUrl, payloadPrediction);
-            console.log(`[Discord Prediction] Đã gửi tin nhắn dự kiến (Đã lưu mốc: ${expectedTimeStr}) thành công.`);
+            console.log(`[Discord Prediction] Đã gửi tin nhắn dự kiến thành công. Mốc lưu: ${expectedTimeStr}`);
           } catch (err) {
             console.error("[Discord Error Prediction] Lỗi:", err.message);
           }
