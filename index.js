@@ -48,17 +48,17 @@ function isDivineItem(item) {
   );
 }
 
-// Hàm định dạng thời gian bảo trì: Giữ lại giờ:phút, bỏ ngày tháng năm và giây
-function formatMaintenanceTime(timeStr) {
+// Hàm định dạng thời gian bỏ ngày tháng, chỉ giữ giờ:phút (dùng cho bảo trì hoặc thời gian dự kiến)
+function formatTimeWithoutDate(timeStr) {
   try {
     if (!timeStr) return "Chưa xác định";
     const date = new Date(timeStr.replace(/-/g, '/'));
     if (isNaN(date.getTime())) {
-      return timeStr.replace(/^\d{4}[-/]\d{1,2}[-/]\d{1,2}\s*/, '').replace(/:\d{2}(\s|$)/, '$1');
+      return timeStr.replace(/^\d{4}[-/]\d{1,2}[-/]\d{1,2}\s*/, '');
     }
 
     const pad = (n) => String(n).padStart(2, '0');
-    return `\({pad(date.getHours())}:\){pad(date.getMinutes())}`;
+    return `\({pad(date.getHours())}:\){pad(date.getMinutes())}:${pad(date.getSeconds())}`;
   } catch (e) {
     return timeStr;
   }
@@ -86,13 +86,16 @@ function extractInfo(item) {
   return { bossName, mapName, serverName, timeStr };
 }
 
-// Gửi tin nhắn thông báo Boss
+// Gửi tin nhắn thông báo Boss (Đã thêm lại thời gian dự kiến & delay, bỏ ngày tháng)
 async function sendDiscordEmbed(item) {
   const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
   if (!webhookUrl) return;
 
   const info = extractInfo(item);
   if (!isTargetBoss(info.bossName)) return;
+
+  // Tính toán hoặc hiển thị thời gian dự kiến / delay đã bỏ ngày tháng
+  const cleanTime = formatTimeWithoutDate(info.timeStr);
 
   const payload = {
     username: "Han Ne",
@@ -106,6 +109,7 @@ async function sendDiscordEmbed(item) {
           { name: "🗺️ Bản đồ", value: `**${info.mapName}**`, inline: true },
           { name: "🌐 Máy chủ", value: `**${info.serverName}**`, inline: true },
           { name: "⏰ Thời gian ra", value: `\`${info.timeStr}\``, inline: false },
+          { name: "⏳ Dự kiến / Trễ (Delay)", value: `Dự kiến 15 phút - Trễ 7 phút 30 giây (\`${cleanTime}\`)`, inline: false },
           { name: "📞 Hỗ trợ Zalo", value: "Lỗi thông báo liên hệ Zalo **0366 517 900** (Han Đây)", inline: false }
         ],
         footer: { text: "⚔️ Hệ Thống Báo Boss 15 Sao ⚔️" }
@@ -127,7 +131,7 @@ async function sendMaintenanceWebhook(item) {
   if (!webhookUrl) return;
 
   const rawTime = item.time || new Date().toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" });
-  const formattedTime = formatMaintenanceTime(rawTime);
+  const formattedTime = formatTimeWithoutDate(rawTime);
   const contentText = item.value || item.title || "Hệ thống chuẩn bị bảo trì.";
   const serverName = item.server || "15 sao";
 
@@ -161,9 +165,6 @@ async function sendMaintenanceWebhook(item) {
 async function sendDivineItemWebhook(item) {
   const webhookUrl = process.env.DISCORD_WEBHOOK_URL_2 || process.env.DISCORD_WEBHOOK_URL;
   if (!webhookUrl) return;
-
-  // In ra log thô để kiểm tra cấu trúc trên Render Logs
-  console.log("[Debug Divine Raw Item]:", JSON.stringify(item));
 
   const rawTime = item.time || item.thoiGian || new Date().toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" });
   const player = item.player || item.nguoiChoi || item.name || "Không rõ";
@@ -218,7 +219,7 @@ async function fetchBossApi() {
           const contentStr = String(item.value || item.title || "").toLowerCase();
           
           if (category.includes('bảo trì') || contentStr.includes('bảo trì')) {
-            const minuteKey = formatMaintenanceTime(item.time || "");
+            const minuteKey = formatTimeWithoutDate(item.time || "");
             processedMaintenanceIds.add(`maint_${item.id || minuteKey}`);
           }
         });
@@ -241,7 +242,7 @@ async function fetchBossApi() {
           
           if (category.includes('bảo trì') || contentStr.includes('bảo trì')) {
             const rawTime = newItem.time || "";
-            const minuteKey = formatMaintenanceTime(rawTime);
+            const minuteKey = formatTimeWithoutDate(rawTime);
             const maintId = `maint_${newItem.id || minuteKey}`;
 
             if (!processedMaintenanceIds.has(maintId)) {
