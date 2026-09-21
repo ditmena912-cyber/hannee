@@ -7,6 +7,7 @@ app.use(express.json());
 let isBaselineLoaded = false;
 const processedIds = new Set();
 const processedMaintenanceIds = new Set();
+const processedItemIds = new Set();
 
 let lastNumberFourItem = null;
 
@@ -29,6 +30,12 @@ function isTeamLeader(bossName) {
   return nameLower.includes('đội trưởng') || nameLower.includes('ginyu');
 }
 
+// Kiểm tra thông tin "Đồ thần linh"
+function isDivineItem(item) {
+  const text = (item.value || item.title || item.bossName || "").toLowerCase();
+  return text.includes('thần linh') || text.includes('đồ thần linh') || text.includes('trang bị thần linh');
+}
+
 // Hàm định dạng thời gian DÀNH RIÊNG CHO BẢO TRÌ: Loại bỏ giây, chỉ giữ lại phút để chống spam
 function formatMaintenanceTime(timeStr) {
   try {
@@ -39,13 +46,13 @@ function formatMaintenanceTime(timeStr) {
     }
 
     const pad = (n) => String(n).padStart(2, '0');
-    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+    return `\({date.getFullYear()}-\){pad(date.getMonth() + 1)}-\({pad(date.getDate())}\){pad(date.getHours())}:${pad(date.getMinutes())}`;
   } catch (e) {
     return timeStr;
   }
 }
 
-// Hàm tính toán thời gian cho Boss (Đảm bảo có khoảng trắng phân tách ngày và giờ)
+// Hàm tính toán thời gian cho Boss (ĐÃ CỐ ĐỊNH KHOẢNG TRẮNG GIỮA NGÀY VÀ GIỜ)
 function calculateNextTime(timeStr, addMins, addSecs = 0) {
   try {
     const date = new Date(timeStr.replace(/-/g, '/'));
@@ -62,13 +69,13 @@ function calculateNextTime(timeStr, addMins, addSecs = 0) {
     const minutes = pad(date.getMinutes());
     const seconds = pad(date.getSeconds());
 
-    return `${year}-${month}-${day}${hours}:${minutes}:${seconds}`;
+    return `\({year}-\){month}-\({day}\){hours}:\({minutes}:\){seconds}`;
   } catch (e) {
     return "Không xác định";
   }
 }
 
-// Hàm tính toán khoảng cách thời gian để đưa ra câu note ngắn gọn
+// Hàm tính toán khoảng cách thời gian để đưa ra câu note ngắn gọn (Trễ / Sớm)
 function getDelayNote(actualTimeStr, expectedTimeStr) {
   try {
     const actual = new Date(actualTimeStr.replace(/-/g, '/'));
@@ -154,7 +161,7 @@ async function sendDiscordEmbed(item) {
   }
 }
 
-// Gửi tin nhắn tổng kết mốc Số 4 (Đã sửa chuẩn cú pháp)
+// Gửi tin nhắn tổng kết mốc Số 4 (Đã chuẩn hóa biến và template string)
 async function sendFinalSummaryWebhook(webhookUrl, currentTime, currentMap) {
   const baseTime = lastNumberFourItem ? lastNumberFourItem.timeStr : currentTime;
   const baseMap = lastNumberFourItem ? lastNumberFourItem.mapName : currentMap;
@@ -173,8 +180,8 @@ async function sendFinalSummaryWebhook(webhookUrl, currentTime, currentMap) {
         title: "📊 THỐNG KÊ THỜI GIAN TỪ MỐC SỐ 4 📊",
         color: 3447003,
         fields: [
-          { name: labelNote, value: `**${baseTime}** tại khu vực **${baseMap}**`, inline: false },
-          { name: "🔮 Thời gian dự kiến xuất hiện lần sau", value: `📌 \`${estimatedNext}\`${delayNote}`, inline: false },
+          { name: labelNote, value: `**\({baseTime}** tại khu vực **\){baseMap}**`, inline: false },
+          { name: "🔮 Thời gian dự kiến xuất hiện lần sau", value: `📌 \`\({estimatedNext}\`\){delayNote}`, inline: false },
           { name: "🛡️ Thời gian dự kiến trong giờ hỗ trợ", value: `📌 \`${estimatedSupport}\` **( + 7 phút 30 giây )**`, inline: false },
           { name: "📞 Hỗ trợ Zalo", value: "Lỗi thông báo liên hệ Zalo **0366 517 900** (Han Đây)", inline: false }
         ],
@@ -228,6 +235,41 @@ async function sendMaintenanceWebhook(item) {
   }
 }
 
+// Gửi tin nhắn thông báo Đồ Thần Linh
+async function sendDivineItemWebhook(item) {
+  const webhookUrl = process.env.DISCORD_WEBHOOK_URL_2 || process.env.DISCORD_WEBHOOK_URL;
+  if (!webhookUrl) return;
+
+  const rawTime = item.time || new Date().toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" });
+  const contentText = item.value || item.title || "Phát hiện rơi Đồ Thần Linh!";
+  const serverName = item.server || "15 sao";
+
+  const divinePayload = {
+    username: "millims15",
+    avatar_url: "https://i.imgur.com/4M34hi2.png",
+    embeds: [
+      {
+        title: "✨ THÔNG BÁO RƠI ĐỒ THẦN LINH ✨",
+        color: 65535,
+        fields: [
+          { name: "🌐 Máy chủ", value: `**${serverName}**`, inline: true },
+          { name: "⏰ Thời gian", value: `\`${rawTime}\``, inline: false },
+          { name: "🎁 Chi tiết", value: String(contentText), inline: false },
+          { name: "📞 Hỗ trợ Zalo", value: "Lỗi thông báo liên hệ Zalo **0366 517 900** (Han Đây)", inline: false }
+        ],
+        footer: { text: "⚔️ Hệ Thống Báo Đồ Thần Linh 15 Sao ⚔️" }
+      }
+    ]
+  };
+
+  try {
+    await axios.post(webhookUrl, divinePayload);
+    console.log(`[Discord Divine Item] Đã gửi thông báo Đồ Thần Linh thành công.`);
+  } catch (err) {
+    console.error("[Discord Error Divine Item] Lỗi:", err.message);
+  }
+}
+
 async function fetchBossApi() {
   try {
     const res = await axios.get('https://service.dungpham.com.vn/api/thong-bao', {
@@ -240,14 +282,19 @@ async function fetchBossApi() {
     if (Array.isArray(listData)) {
       if (!isBaselineLoaded) {
         listData.forEach(item => {
-          const id = item.id || `${item.bossName || item.title}_${item.time}`;
+          const id = item.id || `\({item.bossName || item.title}_\){item.time}`;
           processedIds.add(id);
 
           const category = String(item.category || item.type || "").toLowerCase();
           const contentStr = String(item.value || item.title || "").toLowerCase();
+          
           if (category.includes('bảo trì') || contentStr.includes('bảo trì')) {
             const minuteKey = formatMaintenanceTime(item.time || "");
             processedMaintenanceIds.add(`maint_${item.id || minuteKey}`);
+          }
+
+          if (isDivineItem(item)) {
+            processedItemIds.add(`divine_${item.id || item.time}`);
           }
 
           if (isNumberFour(item.bossName)) {
@@ -266,7 +313,7 @@ async function fetchBossApi() {
       } else {
         const newItems = [];
         for (const item of listData) {
-          const id = item.id || `${item.bossName || item.title}_${item.time}`;
+          const id = item.id || `\({item.bossName || item.title}_\){item.time}`;
           const isServer15 = !item.server || String(item.server).includes('15');
           if (!processedIds.has(id) && isServer15) {
             processedIds.add(id);
@@ -286,6 +333,12 @@ async function fetchBossApi() {
             if (!processedMaintenanceIds.has(maintId)) {
               processedMaintenanceIds.add(maintId);
               await sendMaintenanceWebhook(newItem);
+            }
+          } else if (isDivineItem(newItem)) {
+            const divineId = `divine_${newItem.id || newItem.time}`;
+            if (!processedItemIds.has(divineId)) {
+              processedItemIds.add(divineId);
+              await sendDivineItemWebhook(newItem);
             }
           } else {
             await sendDiscordEmbed(newItem);
@@ -307,7 +360,7 @@ async function fetchBossApi() {
 setInterval(fetchBossApi, 5000);
 
 app.get('/', (req, res) => {
-  res.send('Boss & Maintenance Monitor Service is running...');
+  res.send('Boss & Maintenance & Divine Item Monitor Service is running...');
 });
 
 const PORT = process.env.PORT || 3000;
