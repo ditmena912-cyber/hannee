@@ -54,7 +54,6 @@ function formatMaintenanceTime(timeStr) {
     if (!timeStr) return "Chưa xác định";
     const date = new Date(timeStr.replace(/-/g, '/'));
     if (isNaN(date.getTime())) {
-      // Nếu không parse được chuẩn Date, dùng regex cắt bỏ phần YYYY-MM-DD và giây nếu có
       return timeStr.replace(/^\d{4}[-/]\d{1,2}[-/]\d{1,2}\s*/, '').replace(/:\d{2}(\s|$)/, '$1');
     }
 
@@ -163,8 +162,11 @@ async function sendDivineItemWebhook(item) {
   const webhookUrl = process.env.DISCORD_WEBHOOK_URL_2 || process.env.DISCORD_WEBHOOK_URL;
   if (!webhookUrl) return;
 
+  // In ra log thô để kiểm tra cấu trúc trên Render Logs
+  console.log("[Debug Divine Raw Item]:", JSON.stringify(item));
+
   const rawTime = item.time || item.thoiGian || new Date().toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" });
-  const player = item.player || item.nguoiChoi || "Không rõ";
+  const player = item.player || item.nguoiChoi || item.name || "Không rõ";
   const equipmentName = item.equipment || item.trangbi || item.value || item.title || "Đồ thần linh";
   const mapName = item.map || item.mapName || "Không rõ";
   const serverName = item.server || "15 sao";
