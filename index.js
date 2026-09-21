@@ -24,7 +24,7 @@ function isNumberFour(bossName) {
   return bossName.toLowerCase().includes('số 4');
 }
 
-// Kiểm tra thông tin "Đồ thần linh" (Bắt theo danh mục hoặc tên trang bị chứa chữ Thần)
+// Kiểm tra thông tin "Đồ thần linh"
 function isDivineItem(item) {
   const category = (item.category || item.type || "").toLowerCase();
   const title = (item.title || "").toLowerCase();
@@ -48,17 +48,18 @@ function isDivineItem(item) {
   );
 }
 
-// Hàm định dạng thời gian DÀNH RIÊNG CHO BẢO TRÌ: Loại bỏ giây, chỉ giữ lại phút để chống spam
+// Hàm định dạng thời gian bảo trì: Giữ lại giờ:phút, bỏ ngày tháng năm và giây
 function formatMaintenanceTime(timeStr) {
   try {
     if (!timeStr) return "Chưa xác định";
     const date = new Date(timeStr.replace(/-/g, '/'));
     if (isNaN(date.getTime())) {
-      return timeStr.replace(/:\d{2}(\s|$)/, '$1');
+      // Nếu không parse được chuẩn Date, dùng regex cắt bỏ phần YYYY-MM-DD và giây nếu có
+      return timeStr.replace(/^\d{4}[-/]\d{1,2}[-/]\d{1,2}\s*/, '').replace(/:\d{2}(\s|$)/, '$1');
     }
 
     const pad = (n) => String(n).padStart(2, '0');
-    return `\({date.getFullYear()}-\){pad(date.getMonth() + 1)}-\({pad(date.getDate())}\){pad(date.getHours())}:${pad(date.getMinutes())}`;
+    return `\({pad(date.getHours())}:\){pad(date.getMinutes())}`;
   } catch (e) {
     return timeStr;
   }
@@ -198,7 +199,6 @@ async function sendDivineItemWebhook(item) {
 
 async function fetchBossApi() {
   try {
-    // Kéo size 100 để lấy dữ liệu sâu trong khoảng 3 tiếng trước
     const res = await axios.get('https://service.dungpham.com.vn/api/thong-bao', {
       params: { server: '15 sao', size: 100, sort: 'id,desc' },
       headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' },
@@ -210,8 +210,6 @@ async function fetchBossApi() {
       if (!isBaselineLoaded) {
         listData.forEach(item => {
           const id = item.id || `\({item.bossName || item.title}_\){item.time}`;
-          
-          // Đánh dấu boss và bảo trì cũ vào kho đã xử lý để chúng KHÔNG BỊ BẮN LẠI
           processedIds.add(id);
 
           const category = String(item.category || item.type || "").toLowerCase();
@@ -221,8 +219,6 @@ async function fetchBossApi() {
             const minuteKey = formatMaintenanceTime(item.time || "");
             processedMaintenanceIds.add(`maint_${item.id || minuteKey}`);
           }
-
-          // Riêng Đồ thần linh KHÔNG add vội vào processedItemIds ở lúc baseline để bot tiến hành đẩy lại tin cũ test room
         });
         isBaselineLoaded = true;
         console.log("[System] Đã tải xong dữ liệu gốc. Đồ thần linh cũ sẽ được đẩy lại để test room...");
