@@ -85,6 +85,7 @@ function startDiscordBot() {
             const userId = message.author.id;
             const currentBal = getBalance(userId);
 
+            // 🛑 Kiểm tra số dư: Nếu không đủ tiền thì dừng lại NGAY LẬP TỨC và không chạy tiếp
             if (betAmount > currentBal) {
                 return message.reply('❌ Số dư của bạn không đủ! Bạn chỉ đang có **' + currentBal.toLocaleString() + ' 🪙 điểm**.');
             }
@@ -99,9 +100,9 @@ function startDiscordBot() {
             const totalSum = dice1 + dice2 + dice3;
 
             // Quy định kết quả:
-            // - Nếu 3 con xúc xắc giống nhau (Bão: 3 hoặc 18, hoặc cả 3 con y hệt nhau) tính là HÒA
-            // - Xỉu: từ 4 đến 10 (không phải bão)
-            // - Tài: từ 11 đến 17 (không phải bão)
+            // - Nếu 3 con xúc xắc giống nhau tính là HÒA (Bão)
+            // - Xỉu: từ 4 đến 10
+            // - Tài: từ 11 đến 17
             let result = '';
             if (dice1 === dice2 && dice2 === dice3) {
                 result = 'hoa';
@@ -123,14 +124,12 @@ function startDiscordBot() {
             let finalBal = balances.get(userId);
 
             if (choice === result) {
-                // Nếu thắng cửa Tài/Xỉu ăn x2, cửa Hòa ăn x5 cho kích thích
                 const multiplier = (choice === 'hoa') ? 5 : 2;
                 const winAmount = betAmount * multiplier;
                 finalBal += winAmount;
                 balances.set(userId, finalBal);
                 messageResult = '🎉 **CHÚC MỪNG BẠN ĐÃ THẮNG!** Nhận được **+' + winAmount.toLocaleString() + ' 🪙 điểm** (Hệ số x' + multiplier + ').';
             } else if (result === 'hoa' && choice !== 'hoa') {
-                // Nếu ra Hòa mà người chơi cược Tài/Xỉu thì được hoàn lại tiền cược (không mất tiền)
                 finalBal += betAmount;
                 balances.set(userId, finalBal);
                 messageResult = '🤝 **KẾT QUẢ RA HÒA (BÃO)!** Bạn được hoàn lại toàn bộ **' + betAmount.toLocaleString() + ' 🪙 điểm** tiền cược.';
