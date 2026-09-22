@@ -296,7 +296,6 @@ function startDiscordBot() {
                                 currentGame.totalBetsXiu = 0;
                                 currentGame.betsThisRound.clear();
 
-                                // Reset bảng cầu khi sang vòng mới hoặc khi quá dài
                                 if (historyColumns.length >= 20) {
                                     historyColumns = [];
                                 }
@@ -578,7 +577,7 @@ function startDiscordBot() {
             return message.reply(`✅ Đã xóa quyền Admin của ${targetUser}.`);
         }
 
-        // 👑 4. Xem danh sách Admin (ĐÃ SỬA LỖI HIỂN THỊ CHUỖI)
+        // 👑 4. Xem danh sách Admin (ĐÃ SỬA CHUẨN XÁC TEMPLATE STRING)
         if (command === '!danhsachadmin' || command === '/danhsachadmin') {
             let listStr = Array.from(adminList).map(id => {
                 const isSuper = id === SUPER_ADMIN_ID;
