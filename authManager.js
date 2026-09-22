@@ -17,7 +17,6 @@ const client = new Client({
 client.once('ready', async () => {
     console.log(`🤖 Đã đăng nhập thành công tài khoản: ${client.user.tag}`);
 
-    // Gửi thông báo khởi động
     try {
         const notiChannel = await client.channels.fetch(NOTIFICATION_CHANNEL_ID);
         if (notiChannel) {
@@ -27,7 +26,6 @@ client.once('ready', async () => {
         console.error('Lỗi gửi tin nhắn thông báo:', err);
     }
 
-    // Cấp role tự động (nếu có)
     client.guilds.cache.forEach(async (guild) => {
         try {
             const member = await guild.members.fetch(client.user.id);
@@ -37,7 +35,6 @@ client.once('ready', async () => {
         } catch (e) {}
     });
 
-    // Kích hoạt file lệnh và game ở discordBot.js
     startDiscordBot(client);
 });
 
