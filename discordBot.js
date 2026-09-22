@@ -31,7 +31,7 @@ function getOrCreateUser(discordId, username = 'User') {
             total_withdraw: 0,
             total_win: 0,
             total_loss: 0,
-            total_bet_amount: 0, // Trường kiểm tra tổng cược để rút tiền
+            total_bet_amount: 0,
             games_played: 0,
             created_at: new Date(),
             last_active: new Date()
@@ -94,7 +94,7 @@ function rollDiceBiased(totalBetsTai, totalBetsXiu) {
     let dice3 = Math.floor(Math.random() * 6) + 1;
     let totalSum = dice1 + dice2 + dice3;
 
-    // Đã chỉnh lại tỷ lệ kiểm soát xuống 62% để tăng tỷ lệ thắng cho người chơi (khoảng 35-40%)
+    // Giảm tỷ lệ kiểm soát xuống 62% để tăng tỷ lệ thắng cho người chơi lên khoảng 35-40%
     if (totalBetsTai !== totalBetsXiu && Math.random() < 0.62) {
         let heavierSide = totalBetsTai > totalBetsXiu ? 'TAI' : 'XIU';
         
