@@ -10,7 +10,7 @@ const processedMaintenanceIds = new Set();
 const processedItemIds = new Set();
 
 let lastNumberFourTime = null;
-let lastNumberFourMap = null; // Thêm biến lưu bản đồ của Số 4
+let lastNumberFourMap = null;
 let previousExpectedTimeStr = null;
 let currentDelayComment = null;
 
@@ -30,6 +30,12 @@ function isCaptain(bossName) {
   if (!bossName) return false;
   const nameLower = bossName.toLowerCase();
   return nameLower.includes('đội trưởng') || nameLower.includes('ginyu') || nameLower.includes('số 1');
+}
+
+function isAllowedPredictionMap(mapName) {
+  if (!mapName) return false;
+  const mapLower = mapName.toLowerCase();
+  return mapLower.includes('núi khỉ đỏ') || mapLower.includes('hang khỉ đen') || mapLower.includes('núi khỉ đen');
 }
 
 function isDivineItem(item) {
@@ -141,7 +147,7 @@ function extractInfo(item) {
 
   if (isNumberFour(bossName)) {
     lastNumberFourTime = timeStr;
-    lastNumberFourMap = mapName; // Lưu lại map của Số 4
+    lastNumberFourMap = mapName;
   }
 
   return { bossName, mapName, serverName, timeStr };
@@ -181,7 +187,7 @@ async function sendDiscordEmbed(item) {
         title: "🚨 BOSS TIỂU ĐỘI SÁT THỦ XUẤT HIỆN! 🚨",
         color: 16724736,
         fields: fields,
-        footer: { text: "⚔️ Hệ Thống Báo Boss 15 Sao ⚔️" }
+        footer: { text: "⚔️ Hệ Thống Báo Boss 15 Sao ⚔️ | Anh Han Bảo Vậy" }
       }
     ]
   };
@@ -192,8 +198,9 @@ async function sendDiscordEmbed(item) {
     console.error("[Discord Error] Lỗi:", err.message);
   }
 
+  // Chỉ tính và gửi dự kiến nếu Đội trưởng xuất hiện VÀ Số 4 trước đó ở đúng các map cho phép
   if (isCaptain(info.bossName)) {
-    if (lastNumberFourTime) {
+    if (lastNumberFourTime && isAllowedPredictionMap(lastNumberFourMap)) {
       const expectedTimeStr = calculatePrediction(lastNumberFourTime);
       const formattedNumberFourTime = formatTimeWithoutDate(lastNumberFourTime);
       const predictionMap = lastNumberFourMap || "Không rõ";
@@ -221,7 +228,7 @@ async function sendDiscordEmbed(item) {
               title: "⏳ THỜI GIAN DỰ KIẾN VÒNG TIẾP THEO ⏳",
               color: 3447003,
               fields: predictionFields,
-              footer: { text: "⚔️ Hệ Thống Dự Kiến 15 Sao ⚔️" }
+              footer: { text: "⚔️ Hệ Thống Dự Kiến 15 Sao ⚔️ | Anh Han Bảo Vậy" }
             }
           ]
         };
@@ -260,7 +267,7 @@ async function sendMaintenanceWebhook(item) {
           { name: "📝 Nội dung", value: String(contentText), inline: false },
           { name: "📞 Hỗ trợ Zalo", value: "Lỗi thông báo liên hệ Zalo **0366 517 900** (Han Đây)", inline: false }
         ],
-        footer: { text: "⚔️ Hệ Thống Báo Boss 15 Sao ⚔️" }
+        footer: { text: "⚔️ Hệ Thống Báo Boss 15 Sao ⚔️ | Anh Han Bảo Vậy" }
       }
     ]
   };
@@ -297,7 +304,7 @@ async function sendDivineItemWebhook(item) {
           { name: "⏰ Thời gian", value: "`" + rawTime + "`", inline: false },
           { name: "📞 Hỗ trợ Zalo", value: "Lỗi thông báo liên hệ Zalo **0366 517 900** (Han Đây)", inline: false }
         ],
-        footer: { text: "⚔️ Hệ Thống Báo Đồ Thần Linh 15 Sao ⚔️" }
+        footer: { text: "⚔️ Hệ Thống Báo Đồ Thần Linh 15 Sao ⚔️ | Anh Han Bảo Vậy" }
       }
     ]
   };
