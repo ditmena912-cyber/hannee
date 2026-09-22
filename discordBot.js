@@ -94,7 +94,7 @@ function renderBoardString() {
 function startDiscordBot() {
     const client = new Client({
         intents: [
-            GatewayIntentBits.GatewayIntentBits || GatewayIntentBits.Guilds,
+            GatewayIntentBits.Guilds,
             GatewayIntentBits.GuildMessages,
             GatewayIntentBits.MessageContent,
             GatewayIntentBits.GuildMembers,
@@ -111,7 +111,7 @@ function startDiscordBot() {
             const embedStart = new EmbedBuilder()
                 .setColor(0x00FFCC)
                 .setTitle(`🎲 BẮT ĐẦU PHIÊN CƯỢC #${currentGame.gameId}`)
-                .setDescription('Thời gian đặt cược bắt đầu! Hãy dùng lệnh:\n👉 `/cuoctai [số vàng]` hoặc `/cuocxiu [số vàng]`')
+                .setDescription('Thời gian đặt cược bắt đầu! Gõ `/huongdan` để xem luật chơi.\n👉 `/cuoctai [số vàng]` hoặc `/cuocxiu [số vàng]`')
                 .addFields(
                     { name: '⏳ Thời gian', value: `${currentGame.timeLeft} giây`, inline: true }
                 )
@@ -133,14 +133,13 @@ function startDiscordBot() {
                     currentGame.timeLeft -= 5;
 
                     if (currentGame.timeLeft > 0) {
-                        // Cập nhật lại tin nhắn đếm ngược cho chuyên nghiệp
                         try {
                             const msg = await channel.messages.fetch(currentGame.messageId);
                             if (msg) {
                                 const embedUpdate = new EmbedBuilder()
                                     .setColor(0x00FFCC)
                                     .setTitle(`🎲 PHIÊN CƯỢC #${currentGame.gameId} ĐANG DIỄN RA`)
-                                    .setDescription('Hãy nhanh tay đặt cược:\n👉 `/cuoctai [số vàng]` hoặc `/cuocxiu [số vàng]`')
+                                    .setDescription('Nhanh tay đặt cược:\n👉 `/cuoctai [số vàng]` hoặc `/cuocxiu [số vàng]`')
                                     .addFields(
                                         { name: '⏳ Thời gian còn lại', value: `${currentGame.timeLeft} giây`, inline: true },
                                         { name: '💰 Tổng cược Tài', value: `${currentGame.totalBetsTai.toLocaleString()} vàng`, inline: true },
@@ -166,7 +165,7 @@ function startDiscordBot() {
                             }
                         } catch (e) {}
 
-                        // Chờ 2 giây tạo hiệu ứng hồi hộp rồi tung xúc xắc
+                        // Chờ 2 giây tạo hiệu ứng rồi tung xúc xắc
                         setTimeout(async () => {
                             let dice1 = Math.floor(Math.random() * 6) + 1;
                             let dice2 = Math.floor(Math.random() * 6) + 1;
@@ -235,7 +234,7 @@ function startDiscordBot() {
                             let winnersText = winnersList.length > 0 ? winnersList.join('\n') : 'Không có người chơi thắng ở ván này.';
                             let losersText = losersList.length > 0 ? losersList.join('\n') : 'Không có người chơi thua.';
 
-                            // Gửi bảng kết quả chi tiết chuẩn xác không bị lỗi template string
+                            // Gửi bảng kết quả chi tiết
                             const embedResult = new EmbedBuilder()
                                 .setColor(resultColor)
                                 .setTitle(`🎲 KẾT QUẢ PHIÊN #${currentGame.gameId}`)
@@ -291,6 +290,34 @@ function startDiscordBot() {
         const userId = message.author.id;
         const user = getOrCreateUser(userId, message.author.username);
         user.last_active = new Date();
+
+        // 📜 BẢNG HƯỚNG DẪN CHƠI & SỬ DỤNG LỆNH
+        if (command === '!huongdan' || command === '/huongdan') {
+            const embedGuide = new EmbedBuilder()
+                .setColor(0xF1C40F)
+                .setTitle('📖 HƯỚNG DẪN CHƠI & LỆNH HỆ THỐNG')
+                .setDescription('Chào mừng bạn đến với hệ thống Mini-Game Tài Xỉu chuyên nghiệp!')
+                .addFields(
+                    { 
+                        name: '🎲 1. Luật Chơi Tài Xỉu', 
+                        value: '• Mỗi phiên cược kéo dài **30 giây**.\n• Bot sẽ lắc 3 viên xúc xắc (mỗi viên từ 1-6 điểm).\n• **TÀI**: Tổng điểm từ 11 đến 17.\n• **XỈU**: Tổng điểm từ 4 đến 10.\n• **HÒA (Bão)**: 3 viên xúc xắc giống hệt nhau (Nhân 5 tiền cược, các cửa Tài/Xỉu được hoàn tiền).', 
+                        inline: false 
+                    },
+                    { 
+                        name: '🎮 2. Danh Sách Lệnh Đặt Cược & Tài Khoản', 
+                        value: '• `/cuoctai [số vàng]` : Đặt cược vào cửa Tài.\n• `/cuocxiu [số vàng]` : Đặt cược vào cửa Xỉu.\n• `/sodu` : Kiểm tra số vàng hiện có.\n• `/nguoidung` : Xem thông tin chi tiết tài khoản.\n• `/thongke` : Xem thống kê thắng/thua cá nhân.', 
+                        inline: false 
+                    },
+                    { 
+                        name: '📜 3. Lệnh Xem Lịch Sử & Bảng Cầu', 
+                        value: '• `/lichsu` : Xem 5 ván cược gần nhất của bạn.\n• `/cau` : Xem bảng cầu kết quả các phiên.\n• `/nap [số lượng]` : Yêu cầu nạp vàng qua Admin.\n• `/rut [số lượng]` : Yêu cầu rút vàng qua Admin.\n• `/naplichsu` / `/rutlichsu` : Xem lịch sử giao dịch.', 
+                        inline: false 
+                    }
+                )
+                .setFooter({ text: 'Chúc bạn chơi game vui vẻ và thắng lớn!' })
+                .setTimestamp();
+            return message.reply({ embeds: [embedGuide] });
+        }
 
         if (command === '!sodu' || command === '/sodu') {
             return message.reply(`💳 Số dư tài khoản của bạn: **${user.balance.toLocaleString()} vàng**`);
@@ -534,4 +561,5 @@ function startDiscordBot() {
     client.login(process.env.GAME_BOT_TOKEN);
 }
 
+module.src = startDiscordBot;
 module.exports = startDiscordBot;
