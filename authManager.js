@@ -1,9 +1,9 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
 
-const accounts = new Map(); // Lưu tài khoản: username -> { password, discordId, balance, total_deposit, total_withdraw, total_win, total_loss }
-const loggedInUsers = new Set(); // Lưu các discordId đã đăng nhập
+const accounts = new Map(); // username -> { password, discordId, balance, total_deposit, total_withdraw, total_win, total_loss }
+const loggedInUsers = new Set(); // Các discordId đã đăng nhập
 
-const MEMBER_ROLE_ID = '1551998207116968016'; // Role "may mắn"
+const MEMBER_ROLE_ID = '1551998207116968016'; // ID Role "may mắn"
 
 function getAuthPanel() {
     const embed = new EmbedBuilder()
@@ -20,17 +20,16 @@ function getAuthPanel() {
     return { embeds: [embed], components: [row] };
 }
 
-// Tạo bảng thông tin cá nhân kèm nút Đăng Xuất (Hiển thị ẩn)
 function getAccountInfoResponse(username, acc) {
     const embed = new EmbedBuilder()
         .setColor(0x00FFCC)
-        .setTitle('👤 THÔNG TIN TÀI KHOẢN: ' + username)
+        .setTitle(`👤 THÔNG TIN TÀI KHOẢN: ${username}`)
         .addFields(
-            { name: '💳 Số dư vàng', value: (acc.balance || 0).toLocaleString() + ' vàng', inline: true },
-            { name: '📥 Tổng nạp', value: (acc.total_deposit || 0).toLocaleString() + ' vàng', inline: true },
-            { name: '📤 Tổng rút', value: (acc.total_withdraw || 0).toLocaleString() + ' vàng', inline: true },
-            { name: '📈 Tổng thắng', value: (acc.total_win || 0).toLocaleString() + ' vàng', inline: true },
-            { name: '📉 Tổng thua', value: (acc.total_loss || 0).toLocaleString() + ' vàng', inline: true }
+            { name: '💳 Số dư vàng', value: `${(acc.balance || 0).toLocaleString()} vàng`, inline: true },
+            { name: '📥 Tổng nạp', value: `${(acc.total_deposit || 0).toLocaleString()} vàng`, inline: true },
+            { name: '📤 Tổng rút', value: `${(acc.total_withdraw || 0).toLocaleString()} vàng`, inline: true },
+            { name: '📈 Tổng thắng', value: `${(acc.total_win || 0).toLocaleString()} vàng`, inline: true },
+            { name: '📉 Tổng thua', value: `${(acc.total_loss || 0).toLocaleString()} vàng`, inline: true }
         )
         .setTimestamp();
 
@@ -97,31 +96,28 @@ async function handleAuthInteraction(interaction) {
 
         loggedInUsers.add(interaction.user.id);
 
-        // Tự động cấp Role "may mắn" để mở khóa phòng chơi riêng tư
         try {
             const member = await interaction.guild.members.fetch(interaction.user.id);
             if (member && !member.roles.cache.has(MEMBER_ROLE_ID)) {
                 await member.roles.add(MEMBER_ROLE_ID);
             }
         } catch (err) {
-            console.error('Không thể cấp role tự động:', err);
+            console.error('Không thể cấp role:', err);
         }
 
-        // Trả về thông tin cá nhân dạng ẩn (ephemeral) kèm nút đăng xuất
         return interaction.reply(getAccountInfoResponse(user, acc));
     }
 
     if (customId === 'btn_dangxuat') {
         loggedInUsers.delete(interaction.user.id);
 
-        // Gỡ role "may mắn" để ẩn lại phòng riêng tư
         try {
             const member = await interaction.guild.members.fetch(interaction.user.id);
             if (member && member.roles.cache.has(MEMBER_ROLE_ID)) {
                 await member.roles.remove(MEMBER_ROLE_ID);
             }
         } catch (err) {
-            console.error('Không thể gỡ role khi đăng xuất:', err);
+            console.error('Không thể gỡ role:', err);
         }
 
         return interaction.update({ 
