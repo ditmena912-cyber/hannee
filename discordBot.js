@@ -1,5 +1,8 @@
 const { Client, GatewayIntentBits } = require('discord.js');
 
+// 📌 ID kênh # mini-game của bạn
+const TARGET_CHANNEL_ID = '1551915282014933083'; 
+
 function startDiscordBot() {
     const client = new Client({
         intents: [
@@ -15,17 +18,18 @@ function startDiscordBot() {
         console.log(`🤖 Bot Discord đã đăng nhập thành công với tên: ${client.user.tag}`);
     });
 
-    // Lắng nghe tin nhắn hoặc lệnh từ Discord
     client.on('messageCreate', async (message) => {
         if (message.author.bot) return;
+
+        // 🛑 Chỉ cho phép bot phản hồi bên trong kênh # mini-game, các kênh khác bot sẽ bỏ qua
+        if (message.channel.id !== TARGET_CHANNEL_ID) return;
         
-        // Ví dụ lệnh kiểm tra bot
+        // Lệnh test hoạt động
         if (message.content === '!ping') {
-            message.reply('Pong! Bot chạy chung với Web Service cực mượt!');
+            message.reply('Pong! Bot đang hoạt động chuẩn xác tại phòng # mini-game!');
         }
     });
 
-    // Đăng nhập bot bằng token bảo mật từ biến môi trường
     client.login(process.env.GAME_BOT_TOKEN);
 }
 
