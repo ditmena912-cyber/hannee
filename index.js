@@ -45,7 +45,7 @@ function isDivineItem(item) {
   const value = (item.value || "").toLowerCase();
   const equipment = (item.equipment || item.trangbi || "").toLowerCase();
   
-  const combined = `\({category}\){title} \({value}\){equipment}`;
+  const combined = `(\({category})\){title} (\({value})\){equipment}`;
   
   return (
     combined.includes('thần linh') || 
