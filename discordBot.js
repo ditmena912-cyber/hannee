@@ -98,22 +98,20 @@ function startDiscordBot() {
             const dice3 = Math.floor(Math.random() * 6) + 1;
             const totalSum = dice1 + dice2 + dice3;
 
-            // Quy định: 3-10 là Xỉu, 11-18 là Tài (nếu 3 con giống nhau - Bão thì tính nhà cái ăn hết hoặc tùy biến, ở đây quy ước chuẩn tổng điểm)
+            // Quy định: 3-10 là Xỉu, 11-18 là Tài
             const result = totalSum >= 11 ? 'tai' : 'xiu';
             const resultText = result === 'tai' ? '🟡 TÀI' : '🔵 XỈU';
-
             const userChoiceText = choice === 'tai' ? '🟡 TÀI' : '🔵 XỈU';
+
             let messageResult = '';
             let finalBal = balances.get(userId);
 
             if (choice === result) {
-                // Thắng cược (nhận lại tiền cược + tiền thắng bằng tiền cược)
                 const winAmount = betAmount * 2;
                 finalBal += winAmount;
                 balances.set(userId, finalBal);
                 messageResult = `🎉 **CHÚC MỪNG BẠN ĐÃ THẮNG!** Nhận được **+${winAmount.toLocaleString()} 🪙 điểm**.`;
             } else {
-                // Thua cược
                 messageResult = `😢 **BẠN ĐÃ THUA CƯỢC!** Mất **-${betAmount.toLocaleString()} 🪙 điểm**.`;
             }
 
