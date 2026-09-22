@@ -202,7 +202,6 @@ async function sendDiscordEmbed(item) {
 
   if (isCaptain(info.bossName)) {
     if (lastNumberFourTime && isAllowedPredictionMap(lastNumberFourMap)) {
-      // Tính 2 mốc: Dự kiến chính (15 phút) và Dự kiến hỗ trợ (7.5 phút)
       const expectedTimeStr = calculatePredictionCustom(lastNumberFourTime, 15);
       const expectedSupportTimeStr = calculatePredictionCustom(lastNumberFourTime, 7.5);
       const formattedNumberFourTime = formatTimeWithoutDate(lastNumberFourTime);
@@ -402,5 +401,6 @@ app.listen(PORT, () => {
   console.log("Server đang chạy tại port " + PORT);
   fetchBossApi();
 });
+
 // Khởi chạy bot Discord song song với web server
 startDiscordBot();
