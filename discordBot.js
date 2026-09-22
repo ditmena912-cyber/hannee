@@ -296,7 +296,7 @@ function startDiscordBot() {
                                 currentGame.totalBetsXiu = 0;
                                 currentGame.betsThisRound.clear();
 
-                                // Kiểm tra nếu bảng cầu quá dài (ví dụ > 20 cột) thì reset bảng cầu
+                                // Reset bảng cầu khi sang vòng mới hoặc khi quá dài
                                 if (historyColumns.length >= 20) {
                                     historyColumns = [];
                                 }
@@ -578,9 +578,13 @@ function startDiscordBot() {
             return message.reply(`✅ Đã xóa quyền Admin của ${targetUser}.`);
         }
 
-        // 👑 4. Xem danh sách Admin
+        // 👑 4. Xem danh sách Admin (ĐÃ SỬA LỖI HIỂN THỊ CHUỖI)
         if (command === '!danhsachadmin' || command === '/danhsachadmin') {
-            let listStr = Array.from(adminList).map(id => `• <@!\({id}>\){id === SUPER_ADMIN_ID ? '(Chủ Sở Hữu)' : ''}`).join('\n');
+            let listStr = Array.from(adminList).map(id => {
+                const isSuper = id === SUPER_ADMIN_ID;
+                return `• <@!\({id}>\){isSuper ? '(Chủ Sở Hữu)' : ''}`;
+            }).join('\n');
+
             const embed = new EmbedBuilder()
                 .setColor(0x00FFFF)
                 .setTitle('🛡️ DANH SÁCH QUẢN TRỊ VIÊN HỆ THỐNG')
