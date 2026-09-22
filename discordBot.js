@@ -1,7 +1,7 @@
 const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
 const { getAuthPanel, handleAuthInteraction, isLoggedIn } = require('./authManager');
 
-const PUBLIC_CHANNEL_ID = '1552069701843161098'; // ID Kênh công khai (nơi gửi bảng đăng nhập)
+const PUBLIC_CHANNEL_ID = '1552069701843161098'; // ID Kênh công khai (nơi chứa bảng đăng nhập)
 const PRIVATE_CHANNEL_ID = '1551915282014933083'; // ID Phòng mini-game riêng tư
 const SUPER_ADMIN_ID = '979587101328834621';
 const adminList = new Set([SUPER_ADMIN_ID]);
@@ -26,7 +26,7 @@ function getOrCreateUser(discordId, username = 'User') {
         users.set(discordId, {
             discord_id: discordId,
             username: username,
-            balance: 100000, // Tặng sẵn 100k vàng test khi tạo user
+            balance: 100000, // Tặng sẵn 100k vàng test
             total_deposit: 0,
             total_withdraw: 0,
             total_win: 0,
@@ -99,14 +99,20 @@ function startDiscordBot() {
     client.once('ready', async () => {
         console.log('🤖 Bot Tài Xỉu đã sẵn sàng: ' + client.user.tag);
 
-        // 1. Gửi bảng đăng nhập ra kênh công khai
+        // 1. Kiểm tra kênh công khai và chỉ gửi bảng đăng nhập nếu chưa có tin nhắn gần đây của bot
         try {
             const publicChannel = await client.channels.fetch(PUBLIC_CHANNEL_ID);
             if (publicChannel) {
-                await publicChannel.send(getAuthPanel());
+                const messages = await publicChannel.messages.fetch({ limit: 10 });
+                const existingAuthMsg = messages.find(m => m.author.id === client.user.id && m.components.length > 0);
+                
+                // Nếu chưa có bảng đăng nhập nào thì mới gửi 1 cái duy nhất
+                if (!existingAuthMsg) {
+                    await publicChannel.send(getAuthPanel());
+                }
             }
         } catch (e) {
-            console.error('Không tìm thấy kênh công khai:', e.message);
+            console.error('Không thể xử lý kênh công khai:', e.message);
         }
 
         // 2. Khởi chạy bàn cược tự động trong phòng mini-game riêng tư
@@ -132,7 +138,7 @@ function startDiscordBot() {
             console.error('Không tìm thấy phòng mini-game riêng tư:', e.message);
         }
 
-        // Vòng lặp đếm ngược và lắc xúc xắc mỗi 5 giây
+        // Vòng lặp game chạy ngầm
         setInterval(async () => {
             try {
                 const privateChannel = await client.channels.fetch(PRIVATE_CHANNEL_ID);
@@ -231,28 +237,7 @@ function startDiscordBot() {
         }, 5000);
     });
 
-    // Lắng nghe lệnh chat ở phòng mini-game (Yêu cầu phải đăng nhập mới dùng được)
-    client.on('messageCreate', async (message) => {
-        if (message.author.bot) return;
-        if (message.channel.id !== PRIVATE_CHANNEL_ID) return;
-
-        if (!isLoggedIn(message.author.id)) {
-            return message.delete().catch(() => {});
-        }
-
-        const args = message.content.trim().split(/\s+/);
-        const command = args[0].toLowerCase();
-        const userId = message.author.id;
-        const user = getOrCreateUser(userId, message.author.username);
-
-        if (command === '!sodu' || command === '/sodu') {
-            return message.reply('💳 Số dư tài khoản của bạn: **' + user.balance.toLocaleString() + ' vàng**');
-        }
-    });
-
-    // Lắng nghe tương tác nút bấm và modal
     client.on('interactionCreate', async (interaction) => {
-        // Xử lý đăng nhập, đăng ký, đăng xuất từ authManager
         if (
             interaction.customId === 'btn_open_dangky' || 
             interaction.customId === 'btn_open_dangnhap' || 
@@ -263,7 +248,6 @@ function startDiscordBot() {
             return await handleAuthInteraction(interaction);
         }
 
-        // Chặn người chưa đăng nhập bấm nút đặt cược trong phòng game
         if (!isLoggedIn(interaction.user.id)) {
             if (interaction.isButton() || interaction.isModalSubmit()) {
                 return interaction.reply({ content: '❌ Bạn cần đăng nhập tài khoản ở kênh công khai trước khi tham gia trò chơi!', ephemeral: true });
