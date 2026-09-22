@@ -1,4 +1,3 @@
-const startDiscordBot = require('./discordBot');
 const express = require('express');
 const axios = require('axios');
 
@@ -45,7 +44,7 @@ function isDivineItem(item) {
   const value = (item.value || "").toLowerCase();
   const equipment = (item.equipment || item.trangbi || "").toLowerCase();
   
-  const combined = `(\({category})\){title} (\({value})\){equipment}`;
+  const combined = category + title + value + equipment;
   
   return (
     combined.includes('thần linh') || 
@@ -160,10 +159,7 @@ async function sendDiscordEmbed(item) {
 
   const info = extractInfo(item);
   
-  // Kiểm tra xem có phải boss mục tiêu không
   if (!isTargetBoss(info.bossName)) return;
-
-  // LỌC MAP: Chỉ cho phép 3 map được chỉ định, các map khác sẽ bỏ qua thông báo
   if (!isAllowedPredictionMap(info.mapName)) return;
 
   let delayComment = null;
@@ -405,5 +401,3 @@ app.listen(PORT, () => {
   console.log("Server đang chạy tại port " + PORT);
   fetchBossApi();
 });
-
-startDiscordBot();
