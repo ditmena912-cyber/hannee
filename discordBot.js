@@ -525,6 +525,8 @@ function startDiscordBot() {
             return message.reply({ embeds: [embed] });
         }
 
+        // --- CÁC LỆNH DÀNH CHO ADMIN ---
+
         if (command === '!congdiem' || command === '/congdiem') {
             if (!isAdmin(userId)) {
                 return message.reply('❌ Bạn không có quyền sử dụng lệnh này!');
@@ -537,6 +539,50 @@ function startDiscordBot() {
             const tUser = getOrCreateUser(targetUser.id, targetUser.username);
             tUser.balance += amount;
             return message.reply('✅ Đã cộng **+' + amount.toLocaleString() + ' vàng** cho ' + targetUser + '. Số dư mới: **' + tUser.balance.toLocaleString() + ' vàng**.');
+        }
+
+        if (command === '!trudiem' || command === '/trudiem') {
+            if (!isAdmin(userId)) {
+                return message.reply('❌ Bạn không có quyền sử dụng lệnh này!');
+            }
+            const targetUser = message.mentions.users.first();
+            const amount = parseInt(args[2]);
+            if (!targetUser || isNaN(amount)) {
+                return message.reply('⚠️ Cú pháp: `!trudiem @User [số vàng]`');
+            }
+            const tUser = getOrCreateUser(targetUser.id, targetUser.username);
+            tUser.balance = Math.max(0, tUser.balance - amount);
+            return message.reply('✅ Đã trừ **-' + amount.toLocaleString() + ' vàng** của ' + targetUser + '. Số dư mới: **' + tUser.balance.toLocaleString() + ' vàng**.');
+        }
+
+        if (command === '!xemlichsu' || command === '/xemlichsu') {
+            if (!isAdmin(userId)) {
+                return message.reply('❌ Bạn không có quyền sử dụng lệnh này!');
+            }
+            const targetUser = message.mentions.users.first();
+            if (!targetUser) {
+                return message.reply('⚠️ Cú pháp: `!xemlichsu @User`');
+            }
+            const userBets = bets.filter(b => b.discord_id === targetUser.id).slice(-10).reverse();
+            let text = userBets.length > 0 
+                ? userBets.map(b => '• Ván #' + b.game_id + ' | Cược: **' + b.choice + '** (' + b.amount.toLocaleString() + 'v) | KQ: **' + b.result + '** | Lời: **' + (b.profit >= 0 ? '+' : '') + b.profit.toLocaleString() + 'v**').join('\n')
+                : 'Người chơi này chưa có lịch sử cược.';
+
+            const embed = new EmbedBuilder().setColor(0x9900FF).setTitle('📜 LỊCH SỬ CƯỢC CỦA ' + targetUser.username).setDescription(text);
+            return message.reply({ embeds: [embed] });
+        }
+
+        if (command === '!xemtatcapendingnap' || command === '/xemtatcapendingnap' || command === '!giaodichtoanserver' || command === '/giaodichtoanserver') {
+            if (!isAdmin(userId)) {
+                return message.reply('❌ Bạn không có quyền sử dụng lệnh này!');
+            }
+            const allTxs = Array.from(transactions.values()).slice(-10).reverse();
+            let text = allTxs.length > 0
+                ? allTxs.map(t => '• [`' + t.transaction_id + '`] <@!' + t.discord_id + '> | ' + t.type + ' | **' + t.amount.toLocaleString() + 'v** | Trạng thái: **' + t.status + '**').join('\n')
+                : 'Chưa có giao dịch nào.';
+
+            const embed = new EmbedBuilder().setColor(0xFFD700).setTitle('📋 TOÀN BỘ GIAO DỊCH NẠP / RÚT GẦN NHẤT').setDescription(text);
+            return message.reply({ embeds: [embed] });
         }
 
         if (command === '!themadmin' || command === '/themadmin') {
@@ -619,7 +665,22 @@ function startDiscordBot() {
             tx.admin_id = interaction.user.id;
             tx.completed_at = new Date();
 
-            await interaction.update({ content: '✅ Giao dịch **' + txId + '** đã được **XÁC NHẬN** bởi <@!' + interaction.user.id + '>.', components: [] });
+            // Cập nhật lại Embed hiển thị giao dịch thành công để thay đổi trạng thái
+            const oldEmbed = interaction.message.embeds[0];
+            const updatedEmbed = EmbedBuilder.from(oldEmbed).setFields(
+                oldEmbed.fields.map(field => {
+                    if (field.name.includes('Trạng thái')) {
+                        return { name: '⏳ Trạng thái', value: '✅ Đã xác nhận thành công bởi <@!' + interaction.user.id + '>', inline: false };
+                    }
+                    return field;
+                })
+            ).setColor(0x00FF00);
+
+            await interaction.update({ 
+                content: '✅ Giao dịch **' + txId + '** đã được **XÁC NHẬN** thành công!', 
+                embeds: [updatedEmbed], 
+                components: [] 
+            });
         } else if (action === 'reject') {
             tx.status = 'REJECTED';
             tx.admin_id = interaction.user.id;
@@ -629,7 +690,21 @@ function startDiscordBot() {
                 targetUser.balance += tx.amount;
             }
 
-            await interaction.update({ content: '❌ Giao dịch **' + txId + '** đã bị **TỪ CHỐI** bởi <@!' + interaction.user.id + '>.', components: [] });
+            const oldEmbed = interaction.message.embeds[0];
+            const updatedEmbed = EmbedBuilder.from(oldEmbed).setFields(
+                oldEmbed.fields.map(field => {
+                    if (field.name.includes('Trạng thái')) {
+                        return { name: '⏳ Trạng thái', value: '❌ Đã bị từ chối bởi <@!' + interaction.user.id + '>', inline: false };
+                    }
+                    return field;
+                })
+            ).setColor(0xFF0000);
+
+            await interaction.update({ 
+                content: '❌ Giao dịch **' + txId + '** đã bị **TỪ CHỐI**.', 
+                embeds: [updatedEmbed], 
+                components: [] 
+            });
         }
     });
 
