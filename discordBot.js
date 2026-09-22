@@ -3,6 +3,9 @@ const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
 // 📌 ID kênh # mini-game của bạn
 const TARGET_CHANNEL_ID = '1551915282014933083'; 
 
+// 👑 ID Discord của bạn (Đã được gộp tự động, chỉ tài khoản của bạn mới dùng được lệnh cộng điểm)
+const ADMIN_USER_ID = '979587101328834621';
+
 // 💰 Lưu trữ số dư điểm ảo của người chơi (Key: userId, Value: số điểm)
 const balances = new Map();
 // 📅 Lưu ngày điểm danh gần nhất của người chơi (Key: userId, Value: 'YYYY-MM-DD')
@@ -51,7 +54,28 @@ function startDiscordBot() {
             return message.reply('💳 Số dư tài khoản của bạn: **' + currentBal.toLocaleString() + ' 🪙 điểm**');
         }
 
-        // 3. Lệnh hướng dẫn sử dụng: !huongdan hoặc !help
+        // 3. Lệnh Admin cộng điểm cho người khác: !congdiem @User 
+        if (command === '!congdiem' || command === '!add') {
+            if (message.author.id !== ADMIN_USER_ID) {
+                return message.reply('❌ Bạn không có quyền sử dụng lệnh này!');
+            }
+
+            const targetUser = message.mentions.users.first();
+            const amount = parseInt(args[2]);
+
+            if (!targetUser || isNaN(amount) || amount <= 0) {
+                return message.reply('⚠️ Cú pháp không đúng! Vui lòng dùng: `!congdiem @TênNgườiDùng `\n*(Ví dụ: `!congdiem @Han 50000`)*');
+            }
+
+            const targetId = targetUser.id;
+            const currentTargetBal = getBalance(targetId);
+            const newTargetBal = currentTargetBal + amount;
+            balances.set(targetId, newTargetBal);
+
+            return message.reply('✅ **Cộng điểm thành công!** Đã cộng **+' + amount.toLocaleString() + ' 🪙 điểm** cho ' + targetUser + '. Số dư mới của họ là: **' + newTargetBal.toLocaleString() + ' 🪙 điểm**.');
+        }
+
+        // 4. Lệnh hướng dẫn sử dụng: !huongdan hoặc !help
         if (command === '!huongdan' || command === '!help') {
             const embedHelp = new EmbedBuilder()
                 .setColor(0x0099FF)
@@ -61,21 +85,21 @@ function startDiscordBot() {
                     { name: '🎁 Điểm danh hằng ngày', value: '`!diemdanh` — Nhận ngay 2,000 điểm (1 lần/ngày).', inline: false },
                     { name: '🎲 Chơi Tài Xỉu', value: '`!tx tai `\n`!tx xiu `\n`!tx hoa `\n*(Tài: 11-17 | Xỉu: 4-10 | Hòa/Bão: 3 con giống nhau, ăn x5)*', inline: false },
                     { name: '💵 Nạp điểm ảo', value: '`!nap` — Xem thông tin chuyển khoản ngân hàng.', inline: false },
-                    { name: '🏓 Kiểm tra bot', value: '`!ping` — Kiểm tra bot có đang hoạt động không.', inline: false }
+                    { name: '👑 Lệnh Admin', value: '`!congdiem @User ` — Cộng điểm cho thành viên.', inline: false }
                 )
                 .setFooter({ text: '⚔️ Anh Han Bảo Vậy ⚔️' });
 
             return message.reply({ embeds: [embedHelp] });
         }
 
-        // 4. Lệnh thông tin nạp tiền: !nap hoặc !naptien
+        // 5. Lệnh thông tin nạp tiền: !nap hoặc !naptien
         if (command === '!nap' || command === '!naptien') {
             const embedNap = new EmbedBuilder()
                 .setColor(0xFFD700)
                 .setTitle('💎 NẠP ĐIỂM ẢO HỆ THỐNG MINI-GAME')
                 .addFields(
                     { name: '🏦 Ngân hàng', value: '**Vietcombank**', inline: true },
-                    { name: ' số tài khoản', value: '**9373027582**', inline: true },
+                    { name: '🔢 Số tài khoản', value: '**9373027582**', inline: true },
                     { name: '👤 Chủ tài khoản', value: '**Vũ Trọng Nhân**', inline: false },
                     { name: '💰 Mức nạp', value: '- Mức chuẩn: **100.000 VNĐ**\n- Hoặc tự chọn (Tối thiểu: **10.000 VNĐ**)', inline: false },
                     { name: '📝 Nội dung chuyển khoản', value: '`napdiem [TênDiscord_hoặc_ID_của_bạn]`', inline: false }
@@ -85,7 +109,7 @@ function startDiscordBot() {
             return message.reply({ embeds: [embedNap] });
         }
 
-        // 5. Lệnh điểm danh nhận quà hằng ngày: !diemdanh
+        // 6. Lệnh điểm danh nhận quà hằng ngày: !diemdanh
         if (command === '!diemdanh') {
             const userId = message.author.id;
             
@@ -105,7 +129,7 @@ function startDiscordBot() {
             return message.reply('🎁 Điểm danh thành công! Bạn nhận được **+' + reward.toLocaleString() + ' 🪙 điểm**. Số dư hiện tại của bạn là: **' + newBal.toLocaleString() + ' 🪙 điểm**.');
         }
 
-        // 6. Lệnh chơi Tài Xỉu: !taixiu  
+        // 7. Lệnh chơi Tài Xỉu: !taixiu  
         if (command === '!taixiu' || command === '!tx') {
             const choice = args[1] ? args[1].toLowerCase() : '';
             const betAmountText = args[2];
@@ -122,15 +146,12 @@ function startDiscordBot() {
             const userId = message.author.id;
             const currentBal = getBalance(userId);
 
-            // 🛑 Kiểm tra số dư: Không đủ tiền thì chặn ngay lập tức
             if (betAmount > currentBal) {
                 return message.reply('❌ Số dư của bạn không đủ! Bạn chỉ đang có **' + currentBal.toLocaleString() + ' 🪙 điểm**.');
             }
 
-            // Trừ tiền cược trước
             balances.set(userId, currentBal - betAmount);
 
-            // Tung 3 con xúc xắc (mỗi con từ 1 đến 6)
             const dice1 = Math.floor(Math.random() * 6) + 1;
             const dice2 = Math.floor(Math.random() * 6) + 1;
             const dice3 = Math.floor(Math.random() * 6) + 1;
@@ -170,7 +191,6 @@ function startDiscordBot() {
                 messageResult = '😢 **BẠN ĐÃ THUA CƯỢC!** Mất **-' + betAmount.toLocaleString() + ' 🪙 điểm**.';
             }
 
-            // Tạo khung hiển thị đẹp mắt (Embed)
             const embed = new EmbedBuilder()
                 .setColor(choice === result ? 0x00FF00 : (result === 'hoa' ? 0xFFA500 : 0xFF0000))
                 .setTitle('🎲 KẾT QUẢ TÀI XỈU CÓ HÒA 🎲')
