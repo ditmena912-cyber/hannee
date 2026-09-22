@@ -79,7 +79,6 @@ function formatTimeWithoutDate(timeStr) {
   }
 }
 
-// Hàm tính thời gian dự kiến (cho phép truyền vào số phút cộng thêm)
 function calculatePredictionCustom(numberFourTimeStr, addMinutes) {
   try {
     if (!numberFourTimeStr) return null;
@@ -160,7 +159,12 @@ async function sendDiscordEmbed(item) {
   if (!webhookUrl) return;
 
   const info = extractInfo(item);
+  
+  // Kiểm tra xem có phải boss mục tiêu không
   if (!isTargetBoss(info.bossName)) return;
+
+  // LỌC MAP: Chỉ cho phép 3 map được chỉ định, các map khác sẽ bỏ qua thông báo
+  if (!isAllowedPredictionMap(info.mapName)) return;
 
   let delayComment = null;
   if (isNumberFour(info.bossName) && previousExpectedTimeStr) {
@@ -402,5 +406,4 @@ app.listen(PORT, () => {
   fetchBossApi();
 });
 
-// Khởi chạy bot Discord song song với web server
 startDiscordBot();
