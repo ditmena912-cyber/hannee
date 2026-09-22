@@ -141,7 +141,7 @@ function startDiscordBot() {
 
         const channel = await client.channels.fetch(TARGET_CHANNEL_ID);
         if (channel) {
-            // Gửi bảng xác thực (Đăng Nhập / Đăng Ký) lên đầu kênh
+            // Gửi bảng xác thực Đăng nhập / Đăng ký lên đầu phòng
             await channel.send(getAuthPanel());
 
             const embedStart = new EmbedBuilder()
@@ -330,7 +330,7 @@ function startDiscordBot() {
         if (message.author.bot) return;
         if (message.channel.id !== TARGET_CHANNEL_ID) return;
 
-        // 🔒 KIỂM TRA ĐĂNG NHẬP: Người dùng chưa đăng nhập không được dùng lệnh
+        // 🔒 KIỂM TRA ĐĂNG NHẬP: Chưa đăng nhập không được dùng lệnh
         if (!isLoggedIn(message.author.id)) {
             return message.reply({ content: '🔒 Bạn chưa đăng nhập tài khoản! Vui lòng bấm nút **Đăng Nhập** hoặc **Đăng Ký** ở bảng xác thực phía trên kênh chat trước khi sử dụng lệnh.' });
         }
@@ -563,7 +563,7 @@ function startDiscordBot() {
     });
 
     client.on('interactionCreate', async (interaction) => {
-        // 1. Chuyển các tương tác Đăng ký / Đăng nhập qua file authManager xử lý
+        // 1. Chuyển tiếp các interaction của Đăng ký / Đăng nhập sang module authManager xử lý
         if (
             interaction.customId === 'btn_open_dangky' || 
             interaction.customId === 'btn_open_dangnhap' || 
