@@ -1,35 +1,26 @@
 const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 
-// 📌 ID kênh # mini-game của bạn
 const TARGET_CHANNEL_ID = '1551915282014933083'; 
-
-// 👑 ID Discord của Chủ sở hữu chính (Super Admin - Có quyền thêm/xóa Admin)
 const SUPER_ADMIN_ID = '979587101328834621';
-
-// 🛡️ Danh sách ID các Admin (Mặc định ban đầu có Super Admin)
 const adminList = new Set([SUPER_ADMIN_ID]);
 
-// 🗂️ Database mô phỏng trong bộ nhớ (Giữ nguyên vẹn lịch sử & số dư người chơi)
-const users = new Map();         // discord_id -> Object User
-const transactions = new Map();  // transaction_id -> Object Transaction
-const bets = [];                 // Danh sách tất cả các ván cược
-const games = [];                // Danh sách các ván đấu
+const users = new Map();         
+const transactions = new Map();  
+const bets = [];                 
+const games = [];                
 
-// Bảng cầu kết quả (Lưu tối đa 20 cột, mỗi cột là mảng các kết quả)
 let historyColumns = [];
 
-// Trạng thái ván hiện tại: 'OPEN' | 'CLOSED'
 let currentGame = {
     gameId: 1,
     status: 'OPEN',
-    timeLeft: 60, // Thời gian cược 1 phút (60 giây)
+    timeLeft: 60,
     totalBetsTai: 0,
     totalBetsXiu: 0,
-    betsThisRound: new Map(), // discord_id -> { choice, amount, username }
+    betsThisRound: new Map(),
     messageId: null
 };
 
-// Khởi tạo thông tin người chơi nếu chưa có
 function getOrCreateUser(discordId, username = 'User') {
     if (!users.has(discordId)) {
         users.set(discordId, {
@@ -52,12 +43,10 @@ function formatTime(date) {
     return date.toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
 }
 
-// Kiểm tra quyền Admin
 function isAdmin(userId) {
     return adminList.has(userId);
 }
 
-// Hàm cập nhật bảng cầu chuẩn xác
 function updateScoreBoard(resultType) {
     if (historyColumns.length === 0) {
         historyColumns.push([resultType]);
@@ -77,7 +66,6 @@ function updateScoreBoard(resultType) {
     }
 }
 
-// Render chuỗi hiển thị bảng cầu dạng ma trận
 function renderBoardString() {
     if (historyColumns.length === 0) return 'Chưa có kết quả phiên nào.';
     
@@ -99,7 +87,6 @@ function renderBoardString() {
     return rows.join('\n');
 }
 
-// 🎲 THUẬT TOÁN TẠO KẾT QUẢ XÚC XẮC THIÊN VỊ NHÀ CÁI (CÀNG CƯỢC CÀNG THUA)
 function rollDiceBiased(totalBetsTai, totalBetsXiu) {
     let dice1 = Math.floor(Math.random() * 6) + 1;
     let dice2 = Math.floor(Math.random() * 6) + 1;
@@ -165,9 +152,6 @@ function startDiscordBot() {
             currentGame.messageId = msg.id;
         }
 
-        // ==========================================
-        // ⏱️ VÒNG LẶP ĐẾM NGƯỢC 5 GIÂY/LẦN (TỔNG 60 GIÂY)
-        // ==========================================
         setInterval(async () => {
             try {
                 const channel = await client.channels.fetch(TARGET_CHANNEL_ID);
@@ -194,7 +178,6 @@ function startDiscordBot() {
                             }
                         } catch (e) {}
                     } else {
-                        // 🛑 HẾT GIỜ ĐẶT CƯỢC -> KHÓA VÀ QUAY THƯỞNG
                         currentGame.status = 'CLOSED';
 
                         try {
@@ -209,7 +192,6 @@ function startDiscordBot() {
                             }
                         } catch (e) {}
 
-                        // Chờ 15 giây trả thưởng
                         setTimeout(async () => {
                             const roll = rollDiceBiased(currentGame.totalBetsTai, currentGame.totalBetsXiu);
                             let dice1 = roll.dice1;
@@ -287,11 +269,10 @@ function startDiscordBot() {
 
                             await channel.send({ embeds: [embedResult] });
 
-                            // Chờ 3 giây để sang phiên mới (60 giây)
                             setTimeout(async () => {
                                 currentGame.gameId += 1;
                                 currentGame.status = 'OPEN';
-                                currentGame.timeLeft = 60; // Đặt lại thời gian 1 phút
+                                currentGame.timeLeft = 60;
                                 currentGame.totalBetsTai = 0;
                                 currentGame.totalBetsXiu = 0;
                                 currentGame.betsThisRound.clear();
@@ -313,7 +294,7 @@ function startDiscordBot() {
                                 currentGame.messageId = newMsg.id;
                             }, 3000);
 
-                        }, 15000); // 15 giây trả thưởng
+                        }, 15000);
                     }
                 }
             } catch (err) {
@@ -533,7 +514,6 @@ function startDiscordBot() {
             return message.reply({ embeds: [embed] });
         }
 
-        // 👑 1. Lệnh cộng điểm (Dành cho mọi Admin)
         if (command === '!congdiem' || command === '/congdiem') {
             if (!isAdmin(userId)) {
                 return message.reply('❌ Bạn không có quyền sử dụng lệnh này!');
@@ -548,7 +528,6 @@ function startDiscordBot() {
             return message.reply(`✅ Đã cộng **+\({amount.toLocaleString()} vàng** cho\){targetUser}. Số dư mới: **${tUser.balance.toLocaleString()} vàng**.`);
         }
 
-        // 👑 2. Lệnh Thêm Admin (Chỉ Chủ sở hữu chính - SUPER_ADMIN_ID mới có quyền)
         if (command === '!themadmin' || command === '/themadmin') {
             if (userId !== SUPER_ADMIN_ID) {
                 return message.reply('❌ Chỉ Chủ sở hữu chính mới có quyền thêm Admin mới!');
@@ -561,7 +540,6 @@ function startDiscordBot() {
             return message.reply(`✅ Đã thêm ${targetUser} vào danh sách Admin thành công!`);
         }
 
-        // 👑 3. Lệnh Xóa Admin (Chỉ Chủ sở hữu chính - SUPER_ADMIN_ID mới có quyền)
         if (command === '!xoaadmin' || command === '/xoaadmin') {
             if (userId !== SUPER_ADMIN_ID) {
                 return message.reply('❌ Chỉ Chủ sở hữu chính mới có quyền xóa Admin!');
@@ -577,7 +555,7 @@ function startDiscordBot() {
             return message.reply(`✅ Đã xóa quyền Admin của ${targetUser}.`);
         }
 
-        // 👑 4. Xem danh sách Admin (ĐÃ SỬA CHUẨN XÁC TEMPLATE STRING)
+        // 🛡️ LỆnh xem danh sách admin (Đã fix chuẩn hoàn toàn)
         if (command === '!danhsachadmin' || command === '/danhsachadmin') {
             let listStr = Array.from(adminList).map(id => {
                 const isSuper = id === SUPER_ADMIN_ID;
