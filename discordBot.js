@@ -28,13 +28,13 @@ function startDiscordBot() {
     });
 
     client.once('ready', () => {
-        console.log(`🤖 Bot Discord đã đăng nhập thành công với tên: ${client.user.tag}`);
+        console.log('🤖 Bot Discord đã đăng nhập thành công với tên: ' + client.user.tag);
     });
 
     client.on('messageCreate', async (message) => {
         if (message.author.bot) return;
 
-        // 🛑 Chỉ cho phép bot phản hồi bên trong kênh # mini-game, các kênh khác bot sẽ bỏ qua
+        // 🛑 Chỉ cho phép bot phản hồi bên trong kênh # mini-game
         if (message.channel.id !== TARGET_CHANNEL_ID) return;
         
         const args = message.content.trim().split(/\s+/);
@@ -48,7 +48,7 @@ function startDiscordBot() {
         // 2. Lệnh xem số dư: !sodu hoặc !balance
         if (command === '!sodu' || command === '!balance') {
             const currentBal = getBalance(message.author.id);
-            return message.reply(`💳 Số dư tài khoản của bạn: **${currentBal.toLocaleString()} 🪙 điểm**`);
+            return message.reply('💳 Số dư tài khoản của bạn: **' + currentBal.toLocaleString() + ' 🪙 điểm**');
         }
 
         // 3. Lệnh điểm danh nhận quà hằng ngày: !diemdanh
@@ -65,7 +65,7 @@ function startDiscordBot() {
             const newBal = getBalance(userId) + reward;
             balances.set(userId, newBal);
 
-            return message.reply(`🎁 Điểm danh thành công! Bạn nhận được **+\({reward.toLocaleString()} 🪙 điểm**. Số dư hiện tại: **\){newBal.toLocaleString()} 🪙 điểm**.`);
+            return message.reply('🎁 Điểm danh thành công! Bạn nhận được **+' + reward.toLocaleString() + ' 🪙 điểm**. Số dư hiện tại: **' + newBal.toLocaleString() + ' 🪙 điểm**.');
         }
 
         // 4. Lệnh chơi Tài Xỉu: !taixiu  
@@ -73,8 +73,8 @@ function startDiscordBot() {
             const choice = args[1] ? args[1].toLowerCase() : '';
             const betAmountText = args[2];
 
-            if (choice !== 'tai' && choice !== 'xiu') {
-                return message.reply('⚠️ Cú pháp không đúng! Vui lòng dùng: `!taixiu tai ` hoặc `!taixiu xiu `\n*(Ví dụ: `!taixiu tai 1000`)*');
+            if (choice !== 'tai' && choice !== 'xiu' && choice !== 'hoa') {
+                return message.reply('⚠️ Cú pháp không đúng! Vui lòng dùng:\n`!taixiu tai `\n`!taixiu xiu `\n`!taixiu hoa `\n*(Ví dụ: `!taixiu tai 1000`)*');
             }
 
             const betAmount = parseInt(betAmountText);
@@ -86,7 +86,7 @@ function startDiscordBot() {
             const currentBal = getBalance(userId);
 
             if (betAmount > currentBal) {
-                return message.reply(`❌ Số dư của bạn không đủ! Bạn chỉ đang có **${currentBal.toLocaleString()} 🪙 điểm**.`);
+                return message.reply('❌ Số dư của bạn không đủ! Bạn chỉ đang có **' + currentBal.toLocaleString() + ' 🪙 điểm**.');
             }
 
             // Trừ tiền cược trước
@@ -98,34 +98,57 @@ function startDiscordBot() {
             const dice3 = Math.floor(Math.random() * 6) + 1;
             const totalSum = dice1 + dice2 + dice3;
 
-            // Quy định: 3-10 là Xỉu, 11-18 là Tài
-            const result = totalSum >= 11 ? 'tai' : 'xiu';
-            const resultText = result === 'tai' ? '🟡 TÀI' : '🔵 XỈU';
-            const userChoiceText = choice === 'tai' ? '🟡 TÀI' : '🔵 XỈU';
+            // Quy định kết quả:
+            // - Nếu 3 con xúc xắc giống nhau (Bão: 3 hoặc 18, hoặc cả 3 con y hệt nhau) tính là HÒA
+            // - Xỉu: từ 4 đến 10 (không phải bão)
+            // - Tài: từ 11 đến 17 (không phải bão)
+            let result = '';
+            if (dice1 === dice2 && dice2 === dice3) {
+                result = 'hoa';
+            } else {
+                result = totalSum >= 11 ? 'tai' : 'xiu';
+            }
+
+            let resultText = '';
+            if (result === 'tai') resultText = '🟡 TÀI';
+            else if (result === 'xiu') resultText = '🔵 XỈU';
+            else resultText = '⚪ HÒA (BÃO)';
+
+            let userChoiceText = '';
+            if (choice === 'tai') userChoiceText = '🟡 TÀI';
+            else if (choice === 'xiu') userChoiceText = '🔵 XỈU';
+            else userChoiceText = '⚪ HÒA';
 
             let messageResult = '';
             let finalBal = balances.get(userId);
 
             if (choice === result) {
-                const winAmount = betAmount * 2;
+                // Nếu thắng cửa Tài/Xỉu ăn x2, cửa Hòa ăn x5 cho kích thích
+                const multiplier = (choice === 'hoa') ? 5 : 2;
+                const winAmount = betAmount * multiplier;
                 finalBal += winAmount;
                 balances.set(userId, finalBal);
-                messageResult = `🎉 **CHÚC MỪNG BẠN ĐÃ THẮNG!** Nhận được **+${winAmount.toLocaleString()} 🪙 điểm**.`;
+                messageResult = '🎉 **CHÚC MỪNG BẠN ĐÃ THẮNG!** Nhận được **+' + winAmount.toLocaleString() + ' 🪙 điểm** (Hệ số x' + multiplier + ').';
+            } else if (result === 'hoa' && choice !== 'hoa') {
+                // Nếu ra Hòa mà người chơi cược Tài/Xỉu thì được hoàn lại tiền cược (không mất tiền)
+                finalBal += betAmount;
+                balances.set(userId, finalBal);
+                messageResult = '🤝 **KẾT QUẢ RA HÒA (BÃO)!** Bạn được hoàn lại toàn bộ **' + betAmount.toLocaleString() + ' 🪙 điểm** tiền cược.';
             } else {
-                messageResult = `😢 **BẠN ĐÃ THUA CƯỢC!** Mất **-${betAmount.toLocaleString()} 🪙 điểm**.`;
+                messageResult = '😢 **BẠN ĐÃ THUA CƯỢC!** Mất **-' + betAmount.toLocaleString() + ' 🪙 điểm**.';
             }
 
             // Tạo khung hiển thị đẹp mắt (Embed)
             const embed = new EmbedBuilder()
-                .setColor(choice === result ? 0x00FF00 : 0xFF0000)
-                .setTitle('🎲 KẾT QUẢ TÀI XỈU 🎲')
+                .setColor(choice === result ? 0x00FF00 : (result === 'hoa' ? 0xFFA500 : 0xFF0000))
+                .setTitle('🎲 KẾT QUẢ TÀI XỈU CÓ HÒA 🎲')
                 .addFields(
-                    { name: '👤 Người chơi', value: `${message.author}`, inline: true },
-                    { name: '🎯 Lựa chọn', value: `${userChoiceText}`, inline: true },
-                    { name: '💵 Tiền cược', value: `${betAmount.toLocaleString()} 🪙`, inline: true },
-                    { name: '🎲 Xúc xắc', value: `🎲 **\({dice1} -\){dice2} - \({dice3}** (Tổng: **\){totalSum}**)`, inline: false },
-                    { name: '🏆 Kết quả', value: `**${resultText}**`, inline: false },
-                    { name: '📜 Tổng kết', value: `\({messageResult}\n💳 Số dư mới: **\){finalBal.toLocaleString()} 🪙 điểm**`, inline: false }
+                    { name: '👤 Người chơi', value: '' + message.author, inline: true },
+                    { name: '🎯 Lựa chọn', value: '' + userChoiceText, inline: true },
+                    { name: '💵 Tiền cược', value: betAmount.toLocaleString() + ' 🪙', inline: true },
+                    { name: '🎲 Xúc xắc', value: '🎲 **' + dice1 + ' - ' + dice2 + ' - ' + dice3 + '** (Tổng: **' + totalSum + '**)', inline: false },
+                    { name: '🏆 Kết quả', value: '**' + resultText + '**', inline: false },
+                    { name: '📜 Tổng kết', value: messageResult + '\n💳 Số dư mới: **' + finalBal.toLocaleString() + ' 🪙 điểm**', inline: false }
                 )
                 .setFooter({ text: '⚔️ Hệ Thống Mini-Game 15 Sao ⚔️ | Anh Han Bảo Vậy' });
 
