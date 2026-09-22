@@ -1,14 +1,14 @@
 const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
-const { getAuthPanel, handleAuthInteraction, isLoggedIn } = require('./authManager');
 
-const PUBLIC_CHANNEL_ID = '1552069701843161098'; // ID Kênh công khai (nơi chứa bảng đăng nhập)
-const PRIVATE_CHANNEL_ID = '1551915282014933083'; // ID Phòng mini-game riêng tư
+const TARGET_CHANNEL_ID = '1551915282014933083'; // ID phòng mini-game riêng tư
 const SUPER_ADMIN_ID = '979587101328834621';
 const adminList = new Set([SUPER_ADMIN_ID]);
 
 const users = new Map();         
 const transactions = new Map();  
 const bets = [];                 
+const games = [];                
+
 let historyColumns = [];
 
 let currentGame = {
@@ -49,24 +49,32 @@ function updateScoreBoard(resultType) {
         historyColumns.push([resultType]);
     } else {
         const lastCol = historyColumns[historyColumns.length - 1];
-        if (lastCol[lastCol.length - 1] === resultType && lastCol.length < 5) {
+        const lastType = lastCol[lastCol.length - 1];
+
+        if (lastType === resultType && lastCol.length < 5) {
             lastCol.push(resultType);
         } else {
             historyColumns.push([resultType]);
         }
     }
-    if (historyColumns.length > 20) historyColumns.shift();
+
+    if (historyColumns.length > 20) {
+        historyColumns.shift();
+    }
 }
 
 function renderBoardString() {
     if (historyColumns.length === 0) return 'Chưa có kết quả phiên nào.';
+    
     let rows = ['', '', '', '', ''];
     for (let r = 0; r < 5; r++) {
         let rowStr = '';
         for (let c = 0; c < historyColumns.length; c++) {
             const col = historyColumns[c];
             if (col[r]) {
-                rowStr += col[r] === 'TAI' ? '🟡 ' : (col[r] === 'XIU' ? '🔵 ' : '⚪ ');
+                if (col[r] === 'TAI') rowStr += '🟡 ';
+                else if (col[r] === 'XIU') rowStr += '🔵 ';
+                else rowStr += '⚪ ';
             } else {
                 rowStr += '⠀  ';
             }
@@ -81,7 +89,14 @@ function rollDiceBiased(totalBetsTai, totalBetsXiu) {
     let dice2 = Math.floor(Math.random() * 6) + 1;
     let dice3 = Math.floor(Math.random() * 6) + 1;
     let totalSum = dice1 + dice2 + dice3;
-    let result = (dice1 === dice2 && dice2 === dice3) ? 'HOA' : (totalSum >= 11 ? 'TAI' : 'XIU');
+
+    let result = '';
+    if (dice1 === dice2 && dice2 === dice3) {
+        result = 'HOA';
+    } else {
+        result = totalSum >= 11 ? 'TAI' : 'XIU';
+    }
+
     return { dice1, dice2, dice3, totalSum, result };
 }
 
@@ -99,31 +114,14 @@ function startDiscordBot() {
     client.once('ready', async () => {
         console.log('🤖 Bot Tài Xỉu đã sẵn sàng: ' + client.user.tag);
 
-        // 1. Kiểm tra kênh công khai và chỉ gửi bảng đăng nhập nếu chưa có tin nhắn gần đây của bot
         try {
-            const publicChannel = await client.channels.fetch(PUBLIC_CHANNEL_ID);
-            if (publicChannel) {
-                const messages = await publicChannel.messages.fetch({ limit: 10 });
-                const existingAuthMsg = messages.find(m => m.author.id === client.user.id && m.components.length > 0);
-                
-                // Nếu chưa có bảng đăng nhập nào thì mới gửi 1 cái duy nhất
-                if (!existingAuthMsg) {
-                    await publicChannel.send(getAuthPanel());
-                }
-            }
-        } catch (e) {
-            console.error('Không thể xử lý kênh công khai:', e.message);
-        }
-
-        // 2. Khởi chạy bàn cược tự động trong phòng mini-game riêng tư
-        try {
-            const privateChannel = await client.channels.fetch(PRIVATE_CHANNEL_ID);
-            if (privateChannel) {
+            const channel = await client.channels.fetch(TARGET_CHANNEL_ID);
+            if (channel) {
                 const embedStart = new EmbedBuilder()
                     .setColor(0x00FFCC)
-                    .setTitle('🎲 BẮT ĐẦU PHIÊN CƯỢC #' + currentGame.gameId)
-                    .setDescription('Thời gian đặt cược bắt đầu! Nhấn nút bên dưới để cược.')
-                    .addFields({ name: '⏳ Thời gian', value: currentGame.timeLeft + ' giây', inline: true })
+                    .setTitle(`🎲 BẮT ĐẦU PHIÊN CƯỢC #${currentGame.gameId}`)
+                    .setDescription('Thời gian đặt cược bắt đầu! Nhấn nút bên dưới để đặt cược nhanh.')
+                    .addFields({ name: '⏳ Thời gian', value: `${currentGame.timeLeft} giây`, inline: true })
                     .setTimestamp();
                 
                 const rowGame = new ActionRowBuilder().addComponents(
@@ -131,47 +129,56 @@ function startDiscordBot() {
                     new ButtonBuilder().setCustomId('btn_mo_cuoc_xiu').setLabel('🔵 CƯỢC XỈU').setStyle(ButtonStyle.Danger)
                 );
 
-                const msg = await privateChannel.send({ embeds: [embedStart], components: [rowGame] });
+                const msg = await channel.send({ embeds: [embedStart], components: [rowGame] });
                 currentGame.messageId = msg.id;
             }
         } catch (e) {
-            console.error('Không tìm thấy phòng mini-game riêng tư:', e.message);
+            console.error('Không tìm thấy kênh game:', e.message);
         }
 
-        // Vòng lặp game chạy ngầm
         setInterval(async () => {
             try {
-                const privateChannel = await client.channels.fetch(PRIVATE_CHANNEL_ID);
-                if (!privateChannel) return;
+                const channel = await client.channels.fetch(TARGET_CHANNEL_ID);
+                if (!channel) return;
 
                 if (currentGame.status === 'OPEN') {
                     currentGame.timeLeft -= 5;
+
                     if (currentGame.timeLeft > 0) {
                         try {
-                            const msg = await privateChannel.messages.fetch(currentGame.messageId);
+                            const msg = await channel.messages.fetch(currentGame.messageId);
                             if (msg) {
                                 const embedUpdate = new EmbedBuilder()
                                     .setColor(0x00FFCC)
-                                    .setTitle('🎲 PHIÊN CƯỢC #' + currentGame.gameId + ' ĐANG DIỄN RA')
+                                    .setTitle(`🎲 PHIÊN CƯỢC #${currentGame.gameId} ĐANG DIỄN RA`)
+                                    .setDescription('Sử dụng các nút bên dưới để chọn cửa cược nhanh:')
                                     .addFields(
-                                        { name: '⏳ Thời gian còn lại', value: currentGame.timeLeft + ' giây', inline: true },
-                                        { name: '💰 Tổng cược Tài', value: currentGame.totalBetsTai.toLocaleString() + ' vàng', inline: true },
-                                        { name: '💰 Tổng cược Xỉu', value: currentGame.totalBetsXiu.toLocaleString() + ' vàng', inline: true }
+                                        { name: '⏳ Thời gian còn lại', value: `${currentGame.timeLeft} giây`, inline: true },
+                                        { name: '💰 Tổng cược Tài', value: `${currentGame.totalBetsTai.toLocaleString()} vàng`, inline: true },
+                                        { name: '💰 Tổng cược Xỉu', value: `${currentGame.totalBetsXiu.toLocaleString()} vàng`, inline: true }
                                     )
                                     .setTimestamp();
+
                                 const rowGame = new ActionRowBuilder().addComponents(
                                     new ButtonBuilder().setCustomId('btn_mo_cuoc_tai').setLabel('🟡 CƯỢC TÀI').setStyle(ButtonStyle.Primary),
                                     new ButtonBuilder().setCustomId('btn_mo_cuoc_xiu').setLabel('🔵 CƯỢC XỈU').setStyle(ButtonStyle.Danger)
                                 );
+
                                 await msg.edit({ embeds: [embedUpdate], components: [rowGame] });
                             }
                         } catch (e) {}
                     } else {
                         currentGame.status = 'CLOSED';
+
                         try {
-                            const msg = await privateChannel.messages.fetch(currentGame.messageId);
+                            const msg = await channel.messages.fetch(currentGame.messageId);
                             if (msg) {
-                                await msg.edit({ embeds: [new EmbedBuilder().setColor(0xE74C3C).setTitle('🔒 PHIÊN CƯỢC #' + currentGame.gameId + ' ĐÃ KHÓA').setDescription('Đang lắc xúc xắc...')], components: [] });
+                                const embedClosed = new EmbedBuilder()
+                                    .setColor(0xE74C3C)
+                                    .setTitle(`🔒 PHIÊN CƯỢC #${currentGame.gameId} ĐÃ KHÓA`)
+                                    .setDescription('Hết thời gian đặt cược! Đang tiến hành lắc xúc xắc...')
+                                    .setTimestamp();
+                                await msg.edit({ embeds: [embedClosed], components: [] });
                             }
                         } catch (e) {}
 
@@ -185,33 +192,58 @@ function startDiscordBot() {
                             for (let [userId, betInfo] of currentGame.betsThisRound.entries()) {
                                 const user = getOrCreateUser(userId, betInfo.username);
                                 user.games_played += 1;
+                                user.last_active = new Date();
+
                                 let profit = 0;
 
                                 if (betInfo.choice === roll.result) {
-                                    profit = Math.floor(betInfo.amount * 1.8);
+                                    const multiplier = (roll.result === 'HOA') ? 4 : 1.8;
+                                    profit = Math.floor(betInfo.amount * multiplier);
                                     user.balance += profit;
                                     user.total_win += (profit - betInfo.amount);
-                                    winnersList.push(`<@!\({userId}>: **+\){profit.toLocaleString()} vàng**`);
+                                    winnersList.push(`• <@!\({userId}>: **+\){profit.toLocaleString()} vàng** (Cược ${betInfo.choice})`);
+                                } else if (roll.result === 'HOA' && betInfo.choice !== 'HOA') {
+                                    user.balance += betInfo.amount;
+                                    profit = 0;
+                                    winnersList.push(`• <@!\({userId}>: **Hoàn\){betInfo.amount.toLocaleString()} vàng** (Hòa bão)`);
                                 } else {
                                     user.total_loss += betInfo.amount;
-                                    losersList.push(`<@!${userId}>: **-${betInfo.amount.toLocaleString()} vàng**`);
+                                    profit = -betInfo.amount;
+                                    losersList.push(`• <@!\({userId}>: **-\){betInfo.amount.toLocaleString()} vàng** (Cược ${betInfo.choice})`);
                                 }
 
-                                bets.push({ game_id: currentGame.gameId, discord_id: userId, choice: betInfo.choice, amount: betInfo.amount, result: roll.result, profit });
+                                bets.push({
+                                    game_id: currentGame.gameId,
+                                    discord_id: userId,
+                                    choice: betInfo.choice,
+                                    amount: betInfo.amount,
+                                    result: roll.result,
+                                    profit: profit
+                                });
                             }
 
-                            const embedResult = new EmbedBuilder()
-                                .setColor(roll.result === 'TAI' ? 0xF1C40F : 0x3498DB)
-                                .setTitle('🎲 KẾT QUẢ PHIÊN #' + currentGame.gameId)
-                                .addFields(
-                                    { name: '🎯 Xúc xắc', value: `**\({roll.dice1} -\){roll.dice2} - \({roll.dice3}** (\){roll.totalSum} điểm)`, inline: false },
-                                    { name: '🏆 Kết quả', value: `**${roll.result}**`, inline: false },
-                                    { name: '📊 Bảng Cầu', value: '```\n' + renderBoardString() + '\n```', inline: false },
-                                    { name: '🎉 Thắng', value: winnersList.length ? winnersList.join('\n') : 'Không có', inline: true },
-                                    { name: '😢 Thua', value: losersList.length ? losersList.join('\n') : 'Không có', inline: true }
-                                );
+                            let resultColor = roll.result === 'TAI' ? 0xF1C40F : (roll.result === 'XIU' ? 0x3498DB : 0x2ECC71);
+                            let resultText = roll.result === 'TAI' ? '🟡 TÀI' : (roll.result === 'XIU' ? '🔵 XỈU' : '⚪ HÒA BÃO');
 
-                            await privateChannel.send({ embeds: [embedResult] });
+                            let winnersText = winnersList.length > 0 ? winnersList.join('\n') : 'Không có người chơi thắng ở ván này.';
+                            let losersText = losersList.length > 0 ? losersList.join('\n') : 'Không có người chơi thua.';
+
+                            const boardStr = '```\n' + renderBoardString() + '\n```';
+
+                            const embedResult = new EmbedBuilder()
+                                .setColor(resultColor)
+                                .setTitle(`🎲 KẾT QUẢ PHIÊN #${currentGame.gameId}`)
+                                .addFields(
+                                    { name: '🎯 Xúc xắc', value: `**\({roll.dice1} -\){roll.dice2} - ${roll.dice3}**`, inline: true },
+                                    { name: '⚖️ Tổng điểm', value: `**${roll.totalSum} điểm**`, inline: true },
+                                    { name: '🏆 Kết quả', value: `**${resultText}**`, inline: false },
+                                    { name: '📊 Bảng Cầu Gần Nhất', value: boardStr, inline: false },
+                                    { name: '🎉 Danh Sách Thắng', value: winnersText, inline: false },
+                                    { name: '😢 Danh Sách Thua', value: losersText, inline: false }
+                                )
+                                .setTimestamp();
+
+                            await channel.send({ embeds: [embedResult] });
 
                             setTimeout(async () => {
                                 currentGame.gameId += 1;
@@ -221,39 +253,75 @@ function startDiscordBot() {
                                 currentGame.totalBetsXiu = 0;
                                 currentGame.betsThisRound.clear();
 
-                                const newMsg = await privateChannel.send({
-                                    embeds: [new EmbedBuilder().setColor(0x00FFCC).setTitle('🎲 BẮT ĐẦU PHIÊN CƯỢC #' + currentGame.gameId).addFields({ name: '⏳ Thời gian', value: '60 giây', inline: true })],
-                                    components: [new ActionRowBuilder().addComponents(
-                                        new ButtonBuilder().setCustomId('btn_mo_cuoc_tai').setLabel('🟡 CƯỢC TÀI').setStyle(ButtonStyle.Primary),
-                                        new ButtonBuilder().setCustomId('btn_mo_cuoc_xiu').setLabel('🔵 CƯỢC XỈU').setStyle(ButtonStyle.Danger)
-                                    )]
-                                });
+                                const embedNewGame = new EmbedBuilder()
+                                    .setColor(0x00FFCC)
+                                    .setTitle(`🎲 BẮT ĐẦU PHIÊN CƯỢC #${currentGame.gameId}`)
+                                    .setDescription('Thời gian đặt cược bắt đầu! Nhấn nút bên dưới để tham gia.')
+                                    .addFields({ name: '⏳ Thời gian', value: `${currentGame.timeLeft} giây`, inline: true })
+                                    .setTimestamp();
+
+                                const rowGame = new ActionRowBuilder().addComponents(
+                                    new ButtonBuilder().setCustomId('btn_mo_cuoc_tai').setLabel('🟡 CƯỢC TÀI').setStyle(ButtonStyle.Primary),
+                                    new ButtonBuilder().setCustomId('btn_mo_cuoc_xiu').setLabel('🔵 CƯỢC XỈU').setStyle(ButtonStyle.Danger)
+                                );
+
+                                const newMsg = await channel.send({ embeds: [embedNewGame], components: [rowGame] });
                                 currentGame.messageId = newMsg.id;
                             }, 3000);
+
                         }, 5000);
                     }
                 }
             } catch (err) {}
-        }, 5000);
+        }, 5000); 
+    });
+
+    client.on('messageCreate', async (message) => {
+        if (message.author.bot) return;
+        if (message.channel.id !== TARGET_CHANNEL_ID) return;
+
+        const args = message.content.trim().split(/\s+/);
+        const command = args[0].toLowerCase();
+        const userId = message.author.id;
+        const user = getOrCreateUser(userId, message.author.username);
+
+        if (command === '!sodu' || command === '/sodu') {
+            return message.reply(`💳 Số dư tài khoản của bạn: **${user.balance.toLocaleString()} vàng**`);
+        }
+
+        if (command === '!nap' || command === '/nap') {
+            const amount = parseInt(args[1]);
+            if (isNaN(amount) || amount <= 0) return message.reply('⚠️ Cú pháp: `/nap [số vàng]`');
+            
+            user.balance += amount;
+            user.total_deposit += amount;
+            return message.reply(`✅ Nạp thành công **+${amount.toLocaleString()} vàng** vào tài khoản!`);
+        }
+
+        if (command === '!rut' || command === '/rut') {
+            const amount = parseInt(args[1]);
+            if (isNaN(amount) || amount <= 0) return message.reply('⚠️ Cú pháp: `/rut [số vàng]`');
+            if (user.balance < amount) return message.reply('❌ Số dư không đủ!');
+
+            user.balance -= amount;
+            user.total_withdraw += amount;
+            return message.reply(`✅ Rút thành công **-${amount.toLocaleString()} vàng** khỏi tài khoản!`);
+        }
+
+        if (command === '!lichsu' || command === '/lichsu') {
+            const userBets = bets.filter(b => b.discord_id === userId).slice(-5).reverse();
+            let text = userBets.length > 0 
+                ? userBets.map(b => `• Ván #\({b.game_id} | Cược: **\){b.choice}** (\({b.amount.toLocaleString()}v) | KQ: **\){b.result}**`).join('\n')
+                : 'Chưa có lịch sử cược.';
+            return message.reply({ embeds: [new EmbedBuilder().setColor(0x9900FF).setTitle('📜 LỊCH SỬ CƯỢC').setDescription(text)] });
+        }
+
+        if (command === '!huongdan' || command === '/huongdan') {
+            return message.reply('📖 Gõ lệnh `/sodu`, `/nap [số vàng]`, `/rut [số vàng]`, `/lichsu` hoặc bấm nút trực tiếp để chơi!');
+        }
     });
 
     client.on('interactionCreate', async (interaction) => {
-        if (
-            interaction.customId === 'btn_open_dangky' || 
-            interaction.customId === 'btn_open_dangnhap' || 
-            interaction.customId === 'btn_dangxuat' ||
-            interaction.customId === 'modal_dangky' || 
-            interaction.customId === 'modal_dangnhap'
-        ) {
-            return await handleAuthInteraction(interaction);
-        }
-
-        if (!isLoggedIn(interaction.user.id)) {
-            if (interaction.isButton() || interaction.isModalSubmit()) {
-                return interaction.reply({ content: '❌ Bạn cần đăng nhập tài khoản ở kênh công khai trước khi tham gia trò chơi!', ephemeral: true });
-            }
-        }
-
         if (interaction.isButton()) {
             if (interaction.customId === 'btn_mo_cuoc_tai' || interaction.customId === 'btn_mo_cuoc_xiu') {
                 if (currentGame.status !== 'OPEN') return interaction.reply({ content: '❌ Đã hết thời gian cược!', ephemeral: true });
@@ -272,8 +340,8 @@ function startDiscordBot() {
             const user = getOrCreateUser(userId, interaction.user.username);
             const amount = parseInt(interaction.fields.getTextInputValue('input_amount_gold').replace(/[,.\s]/g, ''));
 
-            if (isNaN(amount) || amount <= 0) return interaction.reply({ content: '⚠️ Số vàng không hợp lệ!', ephemeral: true });
-            if (user.balance < amount) return interaction.reply({ content: '❌ Số dư không đủ!', ephemeral: true });
+            if (isNaN(amount) || amount <= 0) return message.reply({ content: '⚠️ Số vàng không hợp lệ!', ephemeral: true });
+            if (user.balance < amount) return message.reply({ content: '❌ Số dư không đủ!', ephemeral: true });
 
             const isTai = interaction.customId.includes('tai');
             user.balance -= amount;
@@ -284,7 +352,7 @@ function startDiscordBot() {
 
             currentGame.betsThisRound.set(userId, { choice: isTai ? 'TAI' : 'XIU', amount: amount, username: interaction.user.username });
 
-            return interaction.reply({ content: '✅ Đã đặt **' + amount.toLocaleString() + ' vàng** vào cửa **' + (isTai ? 'TÀI' : 'XỈU') + '**!', ephemeral: true });
+            return interaction.reply({ content: `✅ Đã đặt **\({amount.toLocaleString()} vàng** vào cửa **\){isTai ? 'TÀI' : 'XỈU'}**!`, ephemeral: true });
         }
     });
 
