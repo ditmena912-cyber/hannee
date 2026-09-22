@@ -78,13 +78,14 @@ function formatTimeWithoutDate(timeStr) {
   }
 }
 
-function calculatePrediction(numberFourTimeStr) {
+// Hàm tính thời gian dự kiến (cho phép truyền vào số phút cộng thêm)
+function calculatePredictionCustom(numberFourTimeStr, addMinutes) {
   try {
     if (!numberFourTimeStr) return null;
     const actualDate = new Date(numberFourTimeStr.replace(/-/g, '/'));
     if (isNaN(actualDate.getTime())) return null;
 
-    const expectedDate = new Date(actualDate.getTime() + 15 * 60 * 1000);
+    const expectedDate = new Date(actualDate.getTime() + addMinutes * 60 * 1000);
     const h = String(expectedDate.getHours()).padStart(2, '0');
     const m = String(expectedDate.getMinutes()).padStart(2, '0');
     const s = String(expectedDate.getSeconds()).padStart(2, '0');
@@ -198,10 +199,11 @@ async function sendDiscordEmbed(item) {
     console.error("[Discord Error] Lỗi:", err.message);
   }
 
-  // Chỉ tính và gửi dự kiến nếu Đội trưởng xuất hiện VÀ Số 4 trước đó ở đúng các map cho phép
   if (isCaptain(info.bossName)) {
     if (lastNumberFourTime && isAllowedPredictionMap(lastNumberFourMap)) {
-      const expectedTimeStr = calculatePrediction(lastNumberFourTime);
+      // Tính 2 mốc: Dự kiến chính (15 phút) và Dự kiến hỗ trợ (7.5 phút)
+      const expectedTimeStr = calculatePredictionCustom(lastNumberFourTime, 15);
+      const expectedSupportTimeStr = calculatePredictionCustom(lastNumberFourTime, 7.5);
       const formattedNumberFourTime = formatTimeWithoutDate(lastNumberFourTime);
       const predictionMap = lastNumberFourMap || "Không rõ";
 
@@ -211,7 +213,8 @@ async function sendDiscordEmbed(item) {
         const predictionFields = [
           { name: "📌 Số 4 xuất hiện", value: "`" + formattedNumberFourTime + "`", inline: true },
           { name: "🗺️ Bản đồ Số 4", value: "**" + predictionMap + "**", inline: true },
-          { name: "⏰ Dự kiến ra tiếp", value: "**" + expectedTimeStr + "**", inline: false }
+          { name: "⏰ Dự kiến ra tiếp", value: "**" + expectedTimeStr + "**", inline: false },
+          { name: "⏰ Dự kiến hỗ trợ", value: "**" + expectedSupportTimeStr + "**", inline: false }
         ];
 
         if (currentDelayComment) {
