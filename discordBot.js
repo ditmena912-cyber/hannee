@@ -1,4 +1,5 @@
 const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
+const { getAuthPanel, handleAuthInteraction, isLoggedIn } = require('./authManager');
 
 const TARGET_CHANNEL_ID = '1551915282014933083'; 
 const SUPER_ADMIN_ID = '979587101328834621';
@@ -140,6 +141,9 @@ function startDiscordBot() {
 
         const channel = await client.channels.fetch(TARGET_CHANNEL_ID);
         if (channel) {
+            // Gửi bảng xác thực (Đăng Nhập / Đăng Ký) lên đầu kênh
+            await channel.send(getAuthPanel());
+
             const embedStart = new EmbedBuilder()
                 .setColor(0x00FFCC)
                 .setTitle('🎲 BẮT ĐẦU PHIÊN CƯỢC #' + currentGame.gameId)
@@ -325,6 +329,11 @@ function startDiscordBot() {
     client.on('messageCreate', async (message) => {
         if (message.author.bot) return;
         if (message.channel.id !== TARGET_CHANNEL_ID) return;
+
+        // 🔒 KIỂM TRA ĐĂNG NHẬP: Người dùng chưa đăng nhập không được dùng lệnh
+        if (!isLoggedIn(message.author.id)) {
+            return message.reply({ content: '🔒 Bạn chưa đăng nhập tài khoản! Vui lòng bấm nút **Đăng Nhập** hoặc **Đăng Ký** ở bảng xác thực phía trên kênh chat trước khi sử dụng lệnh.' });
+        }
 
         const args = message.content.trim().split(/\s+/);
         const command = args[0].toLowerCase();
@@ -554,6 +563,23 @@ function startDiscordBot() {
     });
 
     client.on('interactionCreate', async (interaction) => {
+        // 1. Chuyển các tương tác Đăng ký / Đăng nhập qua file authManager xử lý
+        if (
+            interaction.customId === 'btn_open_dangky' || 
+            interaction.customId === 'btn_open_dangnhap' || 
+            interaction.customId === 'modal_dangky' || 
+            interaction.customId === 'modal_dangnhap'
+        ) {
+            return await handleAuthInteraction(interaction);
+        }
+
+        // 🔒 KIỂM TRA ĐĂNG NHẬP: Chưa đăng nhập không được bấm nút cược hoặc thao tác game
+        if (!isLoggedIn(interaction.user.id)) {
+            if (interaction.isButton() || interaction.isModalSubmit()) {
+                return interaction.reply({ content: '❌ Bạn cần đăng nhập tài khoản ở bảng xác thực phía trên trước khi tham gia trò chơi!', ephemeral: true });
+            }
+        }
+
         if (interaction.isButton()) {
             const customId = interaction.customId;
 
