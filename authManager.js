@@ -1,10 +1,10 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
 
-const accounts = new Map(); 
-const loggedInUsers = new Set(); 
+const accounts = new Map(); // Lưu tài khoản: username -> { password, discordId, balance }
+const loggedInUsers = new Set(); // Lưu các discordId đã đăng nhập thành công trong phiên
 
-// ID của Role thành viên sau khi đã đăng nhập (Bạn cần thay ID role này bằng role thực tế trên server của bạn)
-const MEMBER_ROLE_ID = '123456789012345678'; 
+// ID của Role thành viên sau khi đã đăng nhập (Đã cập nhật theo ID bạn cung cấp)
+const MEMBER_ROLE_ID = '1551998207116968016'; 
 
 function getAuthPanel() {
     const embed = new EmbedBuilder()
@@ -47,11 +47,11 @@ async function handleAuthInteraction(interaction) {
         const pass = interaction.fields.getTextInputValue('reg_pass').trim();
 
         if (accounts.has(user)) {
-            return interaction.reply({ content: '❌ Tên tài khoản này đã tồn tại!', ephemeral: true });
+            return interaction.reply({ content: '❌ Tên tài khoản này đã tồn tại, vui lòng chọn tên khác!', ephemeral: true });
         }
 
         accounts.set(user, { password: pass, discordId: interaction.user.id, balance: 100000 });
-        return interaction.reply({ content: `✅ Đăng ký thành công tài khoản **${user}**! Hãy bấm nút "Đăng Nhập".`, ephemeral: true });
+        return interaction.reply({ content: `✅ Đăng ký thành công tài khoản **${user}**! Hãy bấm nút "Đăng Nhập" để vào game.`, ephemeral: true });
     }
 
     if (customId === 'modal_dangnhap') {
@@ -59,13 +59,17 @@ async function handleAuthInteraction(interaction) {
         const pass = interaction.fields.getTextInputValue('login_pass').trim();
 
         const acc = accounts.get(user);
-        if (!acc || acc.password !== pass || acc.discordId !== interaction.user.id) {
-            return interaction.reply({ content: '❌ Sai tên tài khoản, mật khẩu hoặc không đúng tài khoản Discord liên kết!', ephemeral: true });
+        if (!acc || acc.password !== pass) {
+            return interaction.reply({ content: '❌ Sai tên tài khoản hoặc mật khẩu!', ephemeral: true });
+        }
+
+        if (acc.discordId !== interaction.user.id) {
+            return interaction.reply({ content: '❌ Tài khoản này đang được liên kết với một người dùng Discord khác!', ephemeral: true });
         }
 
         loggedInUsers.add(interaction.user.id);
 
-        // Tự động cấp Role để người dùng mở khóa quyền nhìn thấy nội dung phòng chat
+        // Tự động cấp Role để mở khóa kênh cho người chơi
         try {
             const member = await interaction.guild.members.fetch(interaction.user.id);
             if (member && !member.roles.cache.has(MEMBER_ROLE_ID)) {
@@ -76,7 +80,7 @@ async function handleAuthInteraction(interaction) {
         }
 
         return interaction.reply({ 
-            content: `🎉 Đăng nhập thành công! Phòng chơi đã được mở khóa cho tài khoản **${user}**.`, 
+            content: `🎉 Đăng nhập thành công vào tài khoản **${user}**! Kênh chat và giao diện game đã được mở khóa cho bạn.`, 
             ephemeral: true 
         });
     }
