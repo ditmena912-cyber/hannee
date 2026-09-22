@@ -51,7 +51,6 @@ function formatTime(date) {
 
 // Hàm cập nhật bảng cầu chuẩn xác
 function updateScoreBoard(resultType) {
-    // resultType: 'TAI', 'XIU', 'HOA'
     if (historyColumns.length === 0) {
         historyColumns.push([resultType]);
     } else {
@@ -181,9 +180,21 @@ function startDiscordBot() {
                             status: 'COMPLETED'
                         });
 
-                        // Gửi thông báo kết quả ván đấu (Sửa lỗi template string chuẩn cú pháp)
-                        let resultString = result === 'TAI' ? `🟡 TÀI (\({totalSum})` : (result === 'XIU' ? `🔵 XỈU (\){totalSum})` : `⚪ HÒA BÃO (${totalSum})`);
-                        await channel.send(`🎲 **KẾT QUẢ VÁN #\({currentGame.gameId}**: Xúc xắc: **\){dice1} - \({dice2} -\){dice3}** (Tổng: **\({totalSum}**) ➔ **\){resultString}**`);
+                        // 🌟 THÔNG BÁO KẾT QUẢ DẠNG EMBED CHUYÊN NGHIỆP
+                        let resultColor = result === 'TAI' ? 0xF1C40F : (result === 'XIU' ? 0x3498DB : 0x2ECC71);
+                        let resultText = result === 'TAI' ? '🟡 TÀI' : (result === 'XIU' ? '🔵 XỈU' : '⚪ HÒA BÃO');
+
+                        const embedResult = new EmbedBuilder()
+                            .setColor(resultColor)
+                            .setTitle(`🎲 KẾT QUẢ VÁN #${currentGame.gameId}`)
+                            .addFields(
+                                { name: '🎯 Xúc xắc', value: `**\({dice1} -\){dice2} - ${dice3}**`, inline: true },
+                                { name: '⚖️ Tổng điểm', value: `**${totalSum} điểm**`, inline: true },
+                                { name: '🏆 Kết quả', value: `**${resultText}**`, inline: false }
+                            )
+                            .setTimestamp();
+
+                        await channel.send({ embeds: [embedResult] });
 
                         // Chuẩn bị ván mới sau 3 giây nghỉ
                         setTimeout(() => {
@@ -466,5 +477,4 @@ function startDiscordBot() {
     client.login(process.env.GAME_BOT_TOKEN);
 }
 
-// 📌 Export chuẩn xác để index.js gọi không bị lỗi TypeError
 module.exports = startDiscordBot;
