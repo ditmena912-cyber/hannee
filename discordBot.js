@@ -31,7 +31,7 @@ function getOrCreateUser(discordId, username = 'User') {
             total_withdraw: 0,
             total_win: 0,
             total_loss: 0,
-            total_wagered: 0,
+            total_bet_amount: 0, // Thêm trường tổng cược để kiểm tra điều kiện rút
             games_played: 0,
             created_at: new Date(),
             last_active: new Date()
@@ -67,7 +67,6 @@ function updateScoreBoard(resultType) {
     }
 }
 
-// Đặt hàm renderBoardString LÊN TRÊN đoạn gọi nó
 function renderBoardString() {
     if (historyColumns.length === 0) return 'Chưa có kết quả phiên nào.';
     
@@ -211,7 +210,6 @@ function startDiscordBot() {
                                 const user = getOrCreateUser(userId, betInfo.username);
                                 user.games_played += 1;
                                 user.last_active = new Date();
-                                user.total_wagered += betInfo.amount;
 
                                 let profit = 0;
 
@@ -356,8 +354,6 @@ function startDiscordBot() {
                 .addFields(
                     { name: '🆔 Discord ID', value: user.discord_id, inline: true },
                     { name: '💳 Số dư vàng', value: user.balance.toLocaleString() + ' vàng', inline: true },
-                    { name: '📥 Tổng nạp', value: user.total_deposit.toLocaleString() + ' vàng', inline: true },
-                    { name: '📊 Tổng cược', value: user.total_wagered.toLocaleString() + ' vàng', inline: true },
                     { name: '📈 Tổng thắng', value: user.total_win.toLocaleString() + ' vàng', inline: true },
                     { name: '📉 Tổng thua', value: user.total_loss.toLocaleString() + ' vàng', inline: true },
                     { name: '🎮 Tổng ván đã chơi', value: user.games_played + ' ván', inline: true },
@@ -413,15 +409,10 @@ function startDiscordBot() {
                 return message.reply('❌ Số dư không đủ để thực hiện giao dịch rút vàng!');
             }
 
-            const requiredWager = user.total_deposit * 2;
-            if (user.total_wagered < requiredWager) {
-                return message.reply(
-                    '❌ **Chưa đủ điều kiện rút vàng!**\n' +
-                    '• Tổng nạp của bạn: **' + user.total_deposit.toLocaleString() + ' vàng**\n' +
-                    '• Yêu cầu tổng cược tối thiểu (gấp đôi): **' + requiredWager.toLocaleString() + ' vàng**\n' +
-                    '• Tổng cược hiện tại của bạn: **' + user.total_wagered.toLocaleString() + ' vàng**\n' +
-                    '👉 Bạn cần cược thêm **' + (requiredWager - user.total_wagered).toLocaleString() + ' vàng** nữa mới được phép rút.'
-                );
+            // --- KIỂM TRA ĐIỀU KIỆN TỔNG CƯỢC PHẢI GẤP ĐÔI TỔNG NẠP ---
+            const requiredBet = user.total_deposit * 2;
+            if (user.total_bet_amount < requiredBet) {
+                return message.reply('❌ Bạn chưa đủ điều kiện rút tiền!\n• Tổng nạp của bạn: **' + user.total_deposit.toLocaleString() + ' vàng**\n• Tổng cược yêu cầu (>= gấp đôi): **' + requiredBet.toLocaleString() + ' vàng**\n• Tổng cược hiện tại của bạn: **' + user.total_bet_amount.toLocaleString() + ' vàng**');
             }
 
             const txId = 'RUT-' + Math.floor(100000 + Math.random() * 900000);
@@ -472,6 +463,7 @@ function startDiscordBot() {
             }
 
             user.balance -= amount;
+            user.total_bet_amount += amount; // Cộng dồn tổng cược của người chơi
             if (isTai) currentGame.totalBetsTai += amount;
             else currentGame.totalBetsXiu += amount;
 
@@ -515,8 +507,8 @@ function startDiscordBot() {
                 .addFields(
                     { name: '💳 Số dư', value: user.balance.toLocaleString() + ' vàng', inline: true },
                     { name: '📥 Tổng nạp', value: user.total_deposit.toLocaleString() + ' vàng', inline: true },
-                    { name: '📊 Tổng cược', value: user.total_wagered.toLocaleString() + ' vàng', inline: true },
                     { name: '📤 Tổng rút', value: user.total_withdraw.toLocaleString() + ' vàng', inline: true },
+                    { name: '🎲 Tổng cược', value: user.total_bet_amount.toLocaleString() + ' vàng', inline: true },
                     { name: '🎮 Tổng số ván', value: user.games_played + ' ván', inline: true },
                     { name: '📈 Tổng thắng', value: user.total_win.toLocaleString() + ' vàng', inline: true },
                     { name: '📉 Tổng thua', value: user.total_loss.toLocaleString() + ' vàng', inline: true },
@@ -526,4 +518,123 @@ function startDiscordBot() {
         }
 
         if (command === '!cau' || command === '/cau') {
-            const boardStr = '```\n' + renderBoardString() + '\n
+            const boardStr = '```\n' + renderBoardString() + '\n```';
+            const embed = new EmbedBuilder()
+                .setColor(0x9900FF)
+                .setTitle('📊 BẢNG CẦU KẾT QUẢ TÀI XỈU')
+                .setDescription(boardStr);
+            return message.reply({ embeds: [embed] });
+        }
+
+        if (command === '!congdiem' || command === '/congdiem') {
+            if (!isAdmin(userId)) {
+                return message.reply('❌ Bạn không có quyền sử dụng lệnh này!');
+            }
+            const targetUser = message.mentions.users.first();
+            const amount = parseInt(args[2]);
+            if (!targetUser || isNaN(amount)) {
+                return message.reply('⚠️ Cú pháp: `!congdiem @User [số vàng]`');
+            }
+            const tUser = getOrCreateUser(targetUser.id, targetUser.username);
+            tUser.balance += amount;
+            return message.reply('✅ Đã cộng **+' + amount.toLocaleString() + ' vàng** cho ' + targetUser + '. Số dư mới: **' + tUser.balance.toLocaleString() + ' vàng**.');
+        }
+
+        if (command === '!themadmin' || command === '/themadmin') {
+            if (userId !== SUPER_ADMIN_ID) {
+                return message.reply('❌ Chỉ Chủ sở hữu chính mới có quyền thêm Admin mới!');
+            }
+            const targetUser = message.mentions.users.first();
+            if (!targetUser) {
+                return message.reply('⚠️ Cú pháp: `!themadmin @User`');
+            }
+            adminList.add(targetUser.id);
+            return message.reply('✅ Đã thêm ' + targetUser + ' vào danh sách Admin thành công!');
+        }
+
+        if (command === '!xoaadmin' || command === '/xoaadmin') {
+            if (userId !== SUPER_ADMIN_ID) {
+                return message.reply('❌ Chỉ Chủ sở hữu chính mới có quyền xóa Admin!');
+            }
+            const targetUser = message.mentions.users.first();
+            if (!targetUser) {
+                return message.reply('⚠️ Cú pháp: `!xoaadmin @User`');
+            }
+            if (targetUser.id === SUPER_ADMIN_ID) {
+                return message.reply('❌ Không thể xóa Chủ sở hữu chính khỏi hệ thống!');
+            }
+            adminList.delete(targetUser.id);
+            return message.reply('✅ Đã xóa quyền Admin của ' + targetUser + '.');
+        }
+
+        if (command === '!danhsachadmin' || command === '/danhsachadmin') {
+            let listStr = Array.from(adminList).map(id => {
+                const isSuper = id === SUPER_ADMIN_ID;
+                return '• <@!' + id + '> ' + (isSuper ? '(Chủ Sở Hữu)' : '');
+            }).join('\n');
+
+            const embed = new EmbedBuilder()
+                .setColor(0x00FFFF)
+                .setTitle('🛡️ DANH SÁCH QUẢN TRỊ VIÊN HỆ THỐNG')
+                .setDescription(listStr);
+            return message.reply({ embeds: [embed] });
+        }
+    });
+
+    client.on('interactionCreate', async (interaction) => {
+        if (!interaction.isButton()) return;
+
+        const parts = interaction.customId.split('_');
+        const action = parts[0];
+        const type = parts[1];
+        const txId = parts.slice(2).join('_');
+        const tx = transactions.get(txId);
+
+        if (!tx) {
+            return interaction.reply({ content: '❌ Giao dịch này không tồn tại.', ephemeral: true });
+        }
+
+        if (tx.status !== 'PENDING') {
+            return interaction.reply({ content: '❌ Giao dịch này đã được xử lý trước đó rồi!', ephemeral: true });
+        }
+
+        if (!isAdmin(interaction.user.id)) {
+            return interaction.reply({ content: '❌ Chỉ có Quản trị viên mới có quyền thao tác nút này!', ephemeral: true });
+        }
+
+        const targetUser = getOrCreateUser(tx.discord_id);
+
+        if (action === 'approve') {
+            if (type === 'nap') {
+                targetUser.balance += tx.amount;
+                targetUser.total_deposit += tx.amount;
+                tx.status = 'COMPLETED';
+            } else if (type === 'rut') {
+                if (targetUser.balance < tx.amount) {
+                    return interaction.update({ content: '❌ Người chơi không đủ số dư để thực hiện lệnh rút này nữa.', components: [] });
+                }
+                targetUser.balance -= tx.amount;
+                targetUser.total_withdraw += tx.amount;
+                tx.status = 'COMPLETED';
+            }
+            tx.admin_id = interaction.user.id;
+            tx.completed_at = new Date();
+
+            await interaction.update({ content: '✅ Giao dịch **' + txId + '** đã được **XÁC NHẬN** bởi <@!' + interaction.user.id + '>.', components: [] });
+        } else if (action === 'reject') {
+            tx.status = 'REJECTED';
+            tx.admin_id = interaction.user.id;
+            tx.completed_at = new Date();
+
+            if (type === 'rut') {
+                targetUser.balance += tx.amount;
+            }
+
+            await interaction.update({ content: '❌ Giao dịch **' + txId + '** đã bị **TỪ CHỐI** bởi <@!' + interaction.user.id + '>.', components: [] });
+        }
+    });
+
+    client.login(process.env.GAME_BOT_TOKEN);
+}
+
+module.exports = startDiscordBot;
