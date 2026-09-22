@@ -1,7 +1,7 @@
 const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
 
 const TARGET_CHANNEL_ID = '1551915282014933083'; 
-const ADMIN_CHANNEL_ID = '1551915282014933083'; // Bạn có thể thay ID kênh riêng của Admin vào đây nếu muốn
+const ADMIN_CHANNEL_ID = '1551915282014933083'; // Bạn có thể thay ID kênh riêng của Admin vào đây
 const SUPER_ADMIN_ID = '979587101328834621';
 const adminList = new Set([SUPER_ADMIN_ID]);
 
@@ -395,16 +395,19 @@ function startDiscordBot() {
                 completed_at: null
             });
 
-            // Gửi thông báo xác nhận thành công cho người chơi (Không có nút bấm)
+            // 1. Gửi bảng thông báo CHO NGƯỜI CHƠI (KHÔNG CÓ NÚT BẤM)
             const embedUser = new EmbedBuilder()
                 .setColor(0xFFD700)
-                .setTitle('💎 GỬI YÊU CẦU NẠP VÀNG THÀNH CÔNG')
-                .setDescription('Yêu cầu nạp **' + amount.toLocaleString() + ' vàng** của bạn đã được gửi tới Admin. Vui lòng đợi xử lý.')
-                .addFields({ name: '🆔 Mã giao dịch', value: txId, inline: true });
+                .setTitle('💎 YÊU CẦU NẠP VÀNG')
+                .addFields(
+                    { name: '🆔 Mã giao dịch', value: txId, inline: true },
+                    { name: '💰 Số lượng', value: amount.toLocaleString() + ' vàng', inline: true },
+                    { name: '⏳ Trạng thái', value: 'Đang chờ Admin xác nhận', inline: false }
+                );
             
             await message.reply({ embeds: [embedUser] });
 
-            // Gửi thông báo kèm nút XÁC NHẬN / TỪ CHỐI vào Kênh của Admin
+            // 2. Gửi bảng thông báo KÈM NÚT XÁC NHẬN / TỪ CHỐI TỚI KÊNH ADMIN
             try {
                 const adminChannel = await client.channels.fetch(ADMIN_CHANNEL_ID);
                 if (adminChannel) {
@@ -459,16 +462,19 @@ function startDiscordBot() {
                 completed_at: null
             });
 
-            // Gửi thông báo xác nhận thành công cho người chơi (Không có nút bấm)
+            // 1. Gửi bảng thông báo CHO NGƯỜI CHƠI (KHÔNG CÓ NÚT BẤM)
             const embedUser = new EmbedBuilder()
                 .setColor(0xFF4500)
-                .setTitle('💸 GỬI YÊU CẦU RÚT VÀNG THÀNH CÔNG')
-                .setDescription('Yêu cầu rút **' + amount.toLocaleString() + ' vàng** của bạn đã được chuyển cho Admin duyệt.')
-                .addFields({ name: '🆔 Mã giao dịch', value: txId, inline: true });
+                .setTitle('💸 YÊU CẦU RÚT VÀNG')
+                .addFields(
+                    { name: '🆔 Mã giao dịch', value: txId, inline: true },
+                    { name: '💰 Số lượng', value: amount.toLocaleString() + ' vàng', inline: true },
+                    { name: '⏳ Trạng thái', value: 'Đang chờ Admin xử lý', inline: false }
+                );
 
             await message.reply({ embeds: [embedUser] });
 
-            // Gửi thông báo kèm nút duyệt tới kênh Admin
+            // 2. Gửi bảng thông báo KÈM NÚT TỚI KÊNH ADMIN
             try {
                 const adminChannel = await client.channels.fetch(ADMIN_CHANNEL_ID);
                 if (adminChannel) {
