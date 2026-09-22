@@ -1,3 +1,4 @@
+const startDiscordBot = require('./discordBot');
 const express = require('express');
 const axios = require('axios');
 
@@ -401,3 +402,5 @@ app.listen(PORT, () => {
   console.log("Server đang chạy tại port " + PORT);
   fetchBossApi();
 });
+// Khởi chạy bot Discord song song với web server
+startDiscordBot();
