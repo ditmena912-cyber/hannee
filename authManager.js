@@ -1,16 +1,15 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
 
-const accounts = new Map(); // Lưu tài khoản: username -> { password, discordId, balance }
-const loggedInUsers = new Set(); // Lưu các discordId đã đăng nhập thành công trong phiên
+const accounts = new Map(); // Lưu tài khoản: username -> { password, discordId, balance, total_deposit, total_withdraw, total_win, total_loss }
+const loggedInUsers = new Set(); // Lưu các discordId đã đăng nhập
 
-// ID của Role thành viên sau khi đã đăng nhập (Đã cập nhật theo ID bạn cung cấp)
-const MEMBER_ROLE_ID = '1551998207116968016'; 
+const MEMBER_ROLE_ID = '1551998207116968016'; // Role "may mắn"
 
 function getAuthPanel() {
     const embed = new EmbedBuilder()
         .setColor(0x3498DB)
         .setTitle('🔐 HỆ THỐNG XÁC THỰC TÀI KHOẢN')
-        .setDescription('Vui lòng **Đăng nhập** hoặc **Đăng ký** tài khoản để mở khóa và tham gia các tính năng trong phòng này.')
+        .setDescription('Vui lòng **Đăng nhập** hoặc **Đăng ký** tài khoản để mở khóa và tham gia các tính năng trong phòng chơi.')
         .setTimestamp();
 
     const row = new ActionRowBuilder().addComponents(
@@ -19,6 +18,27 @@ function getAuthPanel() {
     );
 
     return { embeds: [embed], components: [row] };
+}
+
+// Tạo bảng thông tin cá nhân kèm nút Đăng Xuất (Hiển thị ẩn)
+function getAccountInfoResponse(username, acc) {
+    const embed = new EmbedBuilder()
+        .setColor(0x00FFCC)
+        .setTitle('👤 THÔNG TIN TÀI KHOẢN: ' + username)
+        .addFields(
+            { name: '💳 Số dư vàng', value: (acc.balance || 0).toLocaleString() + ' vàng', inline: true },
+            { name: '📥 Tổng nạp', value: (acc.total_deposit || 0).toLocaleString() + ' vàng', inline: true },
+            { name: '📤 Tổng rút', value: (acc.total_withdraw || 0).toLocaleString() + ' vàng', inline: true },
+            { name: '📈 Tổng thắng', value: (acc.total_win || 0).toLocaleString() + ' vàng', inline: true },
+            { name: '📉 Tổng thua', value: (acc.total_loss || 0).toLocaleString() + ' vàng', inline: true }
+        )
+        .setTimestamp();
+
+    const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('btn_dangxuat').setLabel('🚪 Đăng Xuất').setStyle(ButtonStyle.Danger)
+    );
+
+    return { embeds: [embed], components: [row], ephemeral: true };
 }
 
 async function handleAuthInteraction(interaction) {
@@ -50,7 +70,15 @@ async function handleAuthInteraction(interaction) {
             return interaction.reply({ content: '❌ Tên tài khoản này đã tồn tại, vui lòng chọn tên khác!', ephemeral: true });
         }
 
-        accounts.set(user, { password: pass, discordId: interaction.user.id, balance: 100000 });
+        accounts.set(user, { 
+            password: pass, 
+            discordId: interaction.user.id, 
+            balance: 100000, 
+            total_deposit: 0, 
+            total_withdraw: 0, 
+            total_win: 0, 
+            total_loss: 0 
+        });
         return interaction.reply({ content: `✅ Đăng ký thành công tài khoản **${user}**! Hãy bấm nút "Đăng Nhập" để vào game.`, ephemeral: true });
     }
 
@@ -69,7 +97,7 @@ async function handleAuthInteraction(interaction) {
 
         loggedInUsers.add(interaction.user.id);
 
-        // Tự động cấp Role để mở khóa kênh cho người chơi
+        // Tự động cấp Role "may mắn" để mở khóa phòng chơi riêng tư
         try {
             const member = await interaction.guild.members.fetch(interaction.user.id);
             if (member && !member.roles.cache.has(MEMBER_ROLE_ID)) {
@@ -79,9 +107,27 @@ async function handleAuthInteraction(interaction) {
             console.error('Không thể cấp role tự động:', err);
         }
 
-        return interaction.reply({ 
-            content: `🎉 Đăng nhập thành công vào tài khoản **${user}**! Kênh chat và giao diện game đã được mở khóa cho bạn.`, 
-            ephemeral: true 
+        // Trả về thông tin cá nhân dạng ẩn (ephemeral) kèm nút đăng xuất
+        return interaction.reply(getAccountInfoResponse(user, acc));
+    }
+
+    if (customId === 'btn_dangxuat') {
+        loggedInUsers.delete(interaction.user.id);
+
+        // Gỡ role "may mắn" để ẩn lại phòng riêng tư
+        try {
+            const member = await interaction.guild.members.fetch(interaction.user.id);
+            if (member && member.roles.cache.has(MEMBER_ROLE_ID)) {
+                await member.roles.remove(MEMBER_ROLE_ID);
+            }
+        } catch (err) {
+            console.error('Không thể gỡ role khi đăng xuất:', err);
+        }
+
+        return interaction.update({ 
+            content: '🚪 Bạn đã đăng xuất thành công khỏi hệ thống. Phòng chơi riêng tư đã được khóa lại.', 
+            embeds: [], 
+            components: [] 
         });
     }
 }
