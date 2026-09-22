@@ -3,8 +3,11 @@ const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder
 // 📌 ID kênh # mini-game của bạn
 const TARGET_CHANNEL_ID = '1551915282014933083'; 
 
-// 👑 ID Discord của Admin / Owner
-const ADMIN_USER_ID = '979587101328834621';
+// 👑 ID Discord của Chủ sở hữu chính (Super Admin - Có quyền thêm/xóa Admin)
+const SUPER_ADMIN_ID = '979587101328834621';
+
+// 🛡️ Danh sách ID các Admin (Mặc định ban đầu có Super Admin)
+const adminList = new Set([SUPER_ADMIN_ID]);
 
 // 🗂️ Database mô phỏng trong bộ nhớ
 const users = new Map();         // discord_id -> Object User
@@ -19,7 +22,7 @@ let historyColumns = [];
 let currentGame = {
     gameId: 1,
     status: 'OPEN',
-    timeLeft: 30, // Thời gian 30 giây
+    timeLeft: 60, // Thời gian 60 giây (1 phút)
     totalBetsTai: 0,
     totalBetsXiu: 0,
     betsThisRound: new Map(), // discord_id -> { choice, amount, username }
@@ -47,6 +50,11 @@ function getOrCreateUser(discordId, username = 'User') {
 
 function formatTime(date) {
     return date.toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
+}
+
+// Kiểm tra quyền Admin
+function isAdmin(userId) {
+    return adminList.has(userId);
 }
 
 // Hàm cập nhật bảng cầu chuẩn xác
@@ -91,6 +99,47 @@ function renderBoardString() {
     return rows.join('\n');
 }
 
+// 🎲 THUẬT TOÁN TẠO KẾT QUẢ XÚC XẮC THIÊN VỊ NHÀ CÁI (CÀNG CƯỢC CÀNG THUA)
+function rollDiceBiased(totalBetsTai, totalBetsXiu) {
+    let dice1 = Math.floor(Math.random() * 6) + 1;
+    let dice2 = Math.floor(Math.random() * 6) + 1;
+    let dice3 = Math.floor(Math.random() * 6) + 1;
+    let totalSum = dice1 + dice2 + dice3;
+
+    // Tỷ lệ gian lận nhà cái (khoảng 65-70% ép kết quả ngược lại cửa người chơi đặt nhiều tiền hơn)
+    if (totalBetsTai !== totalBetsXiu && Math.random() < 0.68) {
+        let heavierSide = totalBetsTai > totalBetsXiu ? 'TAI' : 'XIU';
+        
+        // Nếu cửa Tài đang nặng tiền hơn, ép kết quả thành XỈU (4-10)
+        if (heavierSide === 'TAI') {
+            while (totalSum >= 11) {
+                dice1 = Math.floor(Math.random() * 3) + 1;
+                dice2 = Math.floor(Math.random() * 3) + 1;
+                dice3 = Math.floor(Math.random() * 3) + 1;
+                totalSum = dice1 + dice2 + dice3;
+            }
+        } 
+        // Nếu cửa Xỉu đang nặng tiền hơn, ép kết quả thành TÀI (11-17)
+        else {
+            while (totalSum < 11) {
+                dice1 = Math.floor(Math.random() * 3) + 4;
+                dice2 = Math.floor(Math.random() * 3) + 4;
+                dice3 = Math.floor(Math.random() * 3) + 4;
+                totalSum = dice1 + dice2 + dice3;
+            }
+        }
+    }
+
+    let result = '';
+    if (dice1 === dice2 && dice2 === dice3) {
+        result = 'HOA'; // Bão
+    } else {
+        result = totalSum >= 11 ? 'TAI' : 'XIU';
+    }
+
+    return { dice1, dice2, dice3, totalSum, result };
+}
+
 function startDiscordBot() {
     const client = new Client({
         intents: [
@@ -107,7 +156,6 @@ function startDiscordBot() {
 
         const channel = await client.channels.fetch(TARGET_CHANNEL_ID);
         if (channel) {
-            // Gửi thông báo bắt đầu ván đầu tiên
             const embedStart = new EmbedBuilder()
                 .setColor(0x00FFCC)
                 .setTitle(`🎲 BẮT ĐẦU PHIÊN CƯỢC #${currentGame.gameId}`)
@@ -122,7 +170,7 @@ function startDiscordBot() {
         }
 
         // ==========================================
-        // ⏱️ VÒNG LẶP ĐẾM NGƯỢC 5 GIÂY/LẦN (TỔNG 30 GIÂY)
+        // ⏱️ VÒNG LẶP ĐẾM NGƯỢC 5 GIÂY/LẦN (TỔNG 60 GIÂY)
         // ==========================================
         setInterval(async () => {
             try {
@@ -165,26 +213,22 @@ function startDiscordBot() {
                             }
                         } catch (e) {}
 
-                        // Chờ 2 giây tạo hiệu ứng rồi tung xúc xắc
+                        // Chờ 15 giây trả thưởng theo yêu cầu
                         setTimeout(async () => {
-                            let dice1 = Math.floor(Math.random() * 6) + 1;
-                            let dice2 = Math.floor(Math.random() * 6) + 1;
-                            let dice3 = Math.floor(Math.random() * 6) + 1;
-                            let totalSum = dice1 + dice2 + dice3;
-
-                            let result = '';
-                            if (dice1 === dice2 && dice2 === dice3) {
-                                result = 'HOA';
-                            } else {
-                                result = totalSum >= 11 ? 'TAI' : 'XIU';
-                            }
+                            // Gọi hàm xúc xắc hút máu nhà cái
+                            const roll = rollDiceBiased(currentGame.totalBetsTai, currentGame.totalBetsXiu);
+                            let dice1 = roll.dice1;
+                            let dice2 = roll.dice2;
+                            let dice3 = roll.dice3;
+                            let totalSum = roll.totalSum;
+                            let result = roll.result;
 
                             updateScoreBoard(result);
 
                             let winnersList = [];
                             let losersList = [];
 
-                            // Quét và tính tiền người chơi
+                            // Quét và tính tiền người chơi (Tỷ lệ trả thưởng giảm còn 1.8 thay vì 2.0 để nhà cái ăn phế)
                             for (let [userId, betInfo] of currentGame.betsThisRound.entries()) {
                                 const user = getOrCreateUser(userId, betInfo.username);
                                 user.games_played += 1;
@@ -193,8 +237,8 @@ function startDiscordBot() {
                                 let profit = 0;
 
                                 if (betInfo.choice === result) {
-                                    const multiplier = (result === 'HOA') ? 5 : 2;
-                                    profit = betInfo.amount * multiplier;
+                                    const multiplier = (result === 'HOA') ? 4 : 1.8; // Giảm tỷ lệ ăn thưởng
+                                    profit = Math.floor(betInfo.amount * multiplier);
                                     user.balance += profit;
                                     user.total_win += (profit - betInfo.amount);
                                     winnersList.push(`• <@!\({userId}>: **+\){profit.toLocaleString()} vàng** (Cược ${betInfo.choice})`);
@@ -250,11 +294,11 @@ function startDiscordBot() {
 
                             await channel.send({ embeds: [embedResult] });
 
-                            // Chờ 3 giây để bắt đầu vòng mới (30 giây)
+                            // Chờ 3 giây để bắt đầu vòng mới (60 giây)
                             setTimeout(async () => {
                                 currentGame.gameId += 1;
                                 currentGame.status = 'OPEN';
-                                currentGame.timeLeft = 30; // Đặt lại 30 giây
+                                currentGame.timeLeft = 60; // Đặt lại 60 giây
                                 currentGame.totalBetsTai = 0;
                                 currentGame.totalBetsXiu = 0;
                                 currentGame.betsThisRound.clear();
@@ -272,7 +316,7 @@ function startDiscordBot() {
                                 currentGame.messageId = newMsg.id;
                             }, 3000);
 
-                        }, 2000);
+                        }, 15000); // 15 giây trả thưởng
                     }
                 }
             } catch (err) {
@@ -300,7 +344,7 @@ function startDiscordBot() {
                 .addFields(
                     { 
                         name: '🎲 1. Luật Chơi Tài Xỉu', 
-                        value: '• Mỗi phiên cược kéo dài **30 giây**.\n• Bot sẽ lắc 3 viên xúc xắc (mỗi viên từ 1-6 điểm).\n• **TÀI**: Tổng điểm từ 11 đến 17.\n• **XỈU**: Tổng điểm từ 4 đến 10.\n• **HÒA (Bão)**: 3 viên xúc xắc giống hệt nhau (Nhân 5 tiền cược, các cửa Tài/Xỉu được hoàn tiền).', 
+                        value: '• Mỗi phiên cược kéo dài **60 giây**.\n• Bot sẽ lắc 3 viên xúc xắc (mỗi viên từ 1-6 điểm).\n• **TÀI**: Tổng điểm từ 11 đến 17.\n• **XỈU**: Tổng điểm từ 4 đến 10.\n• **HÒA (Bão)**: 3 viên xúc xắc giống hệt nhau.', 
                         inline: false 
                     },
                     { 
@@ -372,7 +416,7 @@ function startDiscordBot() {
                     { name: '⏳ Trạng thái', value: 'Đang chờ Admin xác nhận', inline: false }
                 );
 
-            return message.reply({ content: `<@!${ADMIN_USER_ID}> Có yêu cầu nạp vàng mới cần xử lý!`, embeds: [embedNap], components: [row] });
+            return message.reply({ content: `🔔 Có yêu cầu nạp vàng mới cần Admin xử lý!`, embeds: [embedNap], components: [row] });
         }
 
         if (command === '!rut' || command === '/rut') {
@@ -413,7 +457,7 @@ function startDiscordBot() {
                     { name: '⏳ Trạng thái', value: 'Đang chờ Admin xử lý', inline: false }
                 );
 
-            return message.reply({ content: `<@!${ADMIN_USER_ID}> Có yêu cầu rút vàng mới cần xử lý!`, embeds: [embedRut], components: [row] });
+            return message.reply({ content: `🔔 Có yêu cầu rút vàng mới cần Admin xử lý!`, embeds: [embedRut], components: [row] });
         }
 
         if (command === '!cuoctai' || command === '/cuoctai' || command === '!cuocxiu' || command === '/cuocxiu') {
@@ -493,8 +537,9 @@ function startDiscordBot() {
             return message.reply({ embeds: [embed] });
         }
 
+        // 👑 1. Lệnh cộng điểm (Dành cho mọi Admin)
         if (command === '!congdiem' || command === '/congdiem') {
-            if (userId !== ADMIN_USER_ID) {
+            if (!isAdmin(userId)) {
                 return message.reply('❌ Bạn không có quyền sử dụng lệnh này!');
             }
             const targetUser = message.mentions.users.first();
@@ -505,6 +550,45 @@ function startDiscordBot() {
             const tUser = getOrCreateUser(targetUser.id, targetUser.username);
             tUser.balance += amount;
             return message.reply(`✅ Đã cộng **+\({amount.toLocaleString()} vàng** cho\){targetUser}. Số dư mới: **${tUser.balance.toLocaleString()} vàng**.`);
+        }
+
+        // 👑 2. Lệnh Thêm Admin (Chỉ Chủ sở hữu chính - SUPER_ADMIN_ID mới có quyền)
+        if (command === '!themadmin' || command === '/themadmin') {
+            if (userId !== SUPER_ADMIN_ID) {
+                return message.reply('❌ Chỉ Chủ sở hữu chính mới có quyền thêm Admin mới!');
+            }
+            const targetUser = message.mentions.users.first();
+            if (!targetUser) {
+                return message.reply('⚠️ Cú pháp: `!themadmin @User`');
+            }
+            adminList.add(targetUser.id);
+            return message.reply(`✅ Đã thêm ${targetUser} vào danh sách Admin thành công!`);
+        }
+
+        // 👑 3. Lệnh Xóa Admin (Chỉ Chủ sở hữu chính - SUPER_ADMIN_ID mới có quyền)
+        if (command === '!xoaadmin' || command === '/xoaadmin') {
+            if (userId !== SUPER_ADMIN_ID) {
+                return message.reply('❌ Chỉ Chủ sở hữu chính mới có quyền xóa Admin!');
+            }
+            const targetUser = message.mentions.users.first();
+            if (!targetUser) {
+                return message.reply('⚠️ Cú pháp: `!xoaadmin @User`');
+            }
+            if (targetUser.id === SUPER_ADMIN_ID) {
+                return message.reply('❌ Không thể xóa Chủ sở hữu chính khỏi hệ thống!');
+            }
+            adminList.delete(targetUser.id);
+            return message.reply(`✅ Đã xóa quyền Admin của ${targetUser}.`);
+        }
+
+        // 👑 4. Xem danh sách Admin
+        if (command === '!danhsachadmin' || command === '/danhsachadmin') {
+            let listStr = Array.from(adminList).map(id => `• <@!\({id}>\){id === SUPER_ADMIN_ID ? '(Chủ Sở Hữu)' : ''}`).join('\n');
+            const embed = new EmbedBuilder()
+                .setColor(0x00FFFF)
+                .setTitle('🛡️ DANH SÁCH QUẢN TRỊ VIÊN HỆ THỐNG')
+                .setDescription(listStr);
+            return message.reply({ embeds: [embed] });
         }
     });
 
@@ -522,8 +606,8 @@ function startDiscordBot() {
             return interaction.reply({ content: '❌ Giao dịch này đã được xử lý trước đó rồi!', ephemeral: true });
         }
 
-        if (interaction.user.id !== ADMIN_USER_ID) {
-            return interaction.reply({ content: '❌ Chỉ có Admin mới có quyền thao tác nút này!', ephemeral: true });
+        if (!isAdmin(interaction.user.id)) {
+            return interaction.reply({ content: '❌ Chỉ có Quản trị viên mới có quyền thao tác nút này!', ephemeral: true });
         }
 
         const targetUser = getOrCreateUser(tx.discord_id);
@@ -561,5 +645,4 @@ function startDiscordBot() {
     client.login(process.env.GAME_BOT_TOKEN);
 }
 
-module.src = startDiscordBot;
 module.exports = startDiscordBot;
