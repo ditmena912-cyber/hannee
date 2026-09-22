@@ -1,10 +1,10 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
 
-// Database tạm thời bằng Map (Bạn có thể thay bằng MongoDB/SQL nếu có)
+// Database tạm thời bằng Map (Bạn có thể thay bằng MongoDB/SQL nếu cần)
 const accounts = new Map(); // Lưu tài khoản: username -> { password, discordId, balance }
-const loggedInUsers = new Set(); // Lưu các discordId đã đăng nhập trong phiên làm việc
+const loggedInUsers = new Set(); // Lưu các discordId đã đăng nhập thành công trong phiên
 
-// Tạo bảng giao diện Đăng Ký / Đăng Nhập ban đầu gửi vào phòng
+// Tạo bảng giao diện Đăng Ký / Đăng Nhập gửi vào phòng chat
 function getAuthPanel() {
     const embed = new EmbedBuilder()
         .setColor(0x3498DB)
@@ -20,7 +20,7 @@ function getAuthPanel() {
     return { embeds: [embed], components: [row] };
 }
 
-// Xử lý các tương tác nút bấm và Modal của Đăng ký / Đăng nhập
+// Xử lý các tương tác nút bấm và Modal liên quan đến Đăng ký / Đăng nhập
 async function handleAuthInteraction(interaction) {
     const customId = interaction.customId;
 
@@ -54,7 +54,7 @@ async function handleAuthInteraction(interaction) {
         }
 
         accounts.set(user, { password: pass, discordId: interaction.user.id, balance: 100000 }); // Tặng sẵn 100k vàng khi tạo
-        return interaction.reply({ content: `✅ Đăng ký thành công tài khoản **${user}**! Hãy bấm "Đăng Nhập" để vào game.`, ephemeral: true });
+        return interaction.reply({ content: `✅ Đăng ký thành công tài khoản **${user}**! Hãy bấm nút "Đăng Nhập" để vào game.`, ephemeral: true });
     }
 
     // 4. Xử lý Submit Modal Đăng Nhập
@@ -71,7 +71,7 @@ async function handleAuthInteraction(interaction) {
             return interaction.reply({ content: '❌ Tài khoản này đang được liên kết với một người dùng Discord khác!', ephemeral: true });
         }
 
-        // Đăng nhập thành công -> Đánh dấu user này đã login
+        // Đăng nhập thành công -> Lưu trạng thái login theo Discord ID
         loggedInUsers.add(interaction.user.id);
 
         return interaction.reply({ 
@@ -81,9 +81,19 @@ async function handleAuthInteraction(interaction) {
     }
 }
 
-// Kiểm tra xem người chơi đã đăng nhập chưa
+// Kiểm tra xem Discord ID đã đăng nhập chưa
 function isLoggedIn(discordId) {
     return loggedInUsers.has(discordId);
 }
 
-module.exports = { getAuthPanel, handleAuthInteraction, isLoggedIn };
+// Hàm lấy thông tin tài khoản game đồng bộ nếu cần (ví dụ liên kết số dư)
+function getAccountByDiscordId(discordId) {
+    for (let [username, acc] of accounts.entries()) {
+        if (acc.discordId === discordId) {
+            return { username, ...acc };
+        }
+    }
+    return null;
+}
+
+module.exports = { getAuthPanel, handleAuthInteraction, isLoggedIn, getAccountByDiscordId, accounts };
