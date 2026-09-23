@@ -404,5 +404,5 @@ app.listen(PORT, () => {
 // --- Code thông báo boss / bảo trì cũ của bạn ở phía trên ---
 // ...
 
-// Thêm dòng này vào cuối file index.js:
-require('./taixiu.js')(client);
+// Gọi file tài xỉu chạy độc lập bên dưới
+require('./taixiu.js');
