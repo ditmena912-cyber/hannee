@@ -406,3 +406,34 @@ app.listen(PORT, () => {
 // Khởi chạy tính năng nhiệm vụ từ file nhiemvu.js
 const { setupNhiemVu } = require('./nhiemvu.js');
 setupNhiemVu(client, BOT_TOKEN);
+// ==========================================
+// KHỞI TẠO DISCORD BOT CHO TÍNH NĂNG NHIỆM VỤ
+// ==========================================
+const { Client, GatewayIntentBits } = require('discord.js');
+const { setupNhiemVu } = require('./nhiemvu.js');
+
+const client = new Client({
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent
+  ]
+});
+
+// Lấy Token từ biến môi trường trên Render
+const BOT_TOKEN = process.env.DISCORD_TOKEN;
+
+if (BOT_TOKEN) {
+  client.login(BOT_TOKEN)
+    .then(() => {
+      console.log('Bot Discord đã đăng nhập thành công!');
+      // Gọi hàm setup nhiệm vụ từ file nhiemvu.js
+      setupNhiemVu(client, BOT_TOKEN);
+    })
+    .catch(err => {
+      console.error('Lỗi đăng nhập Bot Discord:', err.message);
+    });
+} else {
+  console.log('Chưa cấu hình DISCORD_TOKEN trong biến môi trường!');
+}
