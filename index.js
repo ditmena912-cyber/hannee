@@ -1,7 +1,5 @@
 const express = require('express');
 const axios = require('axios');
-const { Client, GatewayIntentBits } = require('discord.js');
-const { setupNhiemVu } = require('./nhiemvu.js');
 
 const app = express();
 app.use(express.json());
@@ -395,23 +393,11 @@ async function fetchBossApi() {
 setInterval(fetchBossApi, 5000);
 
 app.get('/', (req, res) => {
-  res.send('Boss & Maintenance & Divine Item & Mission Monitor Service is running...');
+  res.send('Boss & Maintenance & Divine Item Monitor Service is running...');
 });
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log("Server đang chạy tại port " + PORT);
   fetchBossApi();
-});
-
-// ==========================================
-// KHỞI TẠO DISCORD CLIENT CHO TÍNH NĂNG NHIỆM VỤ
-// ==========================================
-const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMembers,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent
-  ]
 });
