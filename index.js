@@ -5,15 +5,19 @@ const { Server } = require('socket.io');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const Datastore = require('nedb-promises');
+const cors = require('cors');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_key_15sao_han_ne';
 const PORT = process.env.PORT || 3000;
 
 const app = express();
-const server = http.createServer(app);
-const io = new Server(server, { cors: { origin: "*" } });
-
+app.use(cors());
 app.use(express.json());
+
+const server = http.createServer(app);
+const io = new Server(server, { 
+  cors: { origin: "*" } 
+});
 
 // --- 1. CƠ SỞ DỮ LIỆU TÀI KHOẢN ---
 const usersDb = Datastore.create({ filename: './users.db', autoload: true });
@@ -36,7 +40,7 @@ async function initAdmin() {
 }
 initAdmin();
 
-// --- MIDDLEWARE XÁC THỰC JWT ---
+// --- MIDDLEWARE XÁC THỰC JWT CHO API ---
 function authenticateToken(req, res, next) {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
@@ -60,6 +64,23 @@ function requireAdmin(req, res, next) {
   }
 }
 
+// --- MIDDLEWARE XÁC THỰC JWT CHO SOCKET.IO ---
+io.use((socket, next) => {
+  const token = socket.handshake.auth.token || socket.handshake.query.token;
+  if (!token) {
+    return next(new Error('Authentication error: Missing token'));
+  }
+  jwt.verify(token, JWT_SECRET, (err, decoded) => {
+    if (err) return next(new Error('Authentication error: Invalid token'));
+    socket.user = decoded;
+    next();
+  });
+});
+
+io.on('connection', (socket) => {
+  console.log(`🟟 App Desktop của [${socket.user.username}] đã kết nối thành công!`);
+});
+
 // --- 2. API HỆ THỐNG TÀI KHOẢN & ĐĂNG NHẬP ---
 
 // 2.1. API Đăng nhập
@@ -76,7 +97,6 @@ app.post('/api/login', async (req, res) => {
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) return res.status(400).json({ success: false, message: 'Mật khẩu không chính xác!' });
 
-    // Tạo JWT Token có thời hạn 7 ngày
     const token = jwt.sign(
       { username: user.username, role: user.role },
       JWT_SECRET,
@@ -94,7 +114,7 @@ app.post('/api/login', async (req, res) => {
   }
 });
 
-// 2.2. API Admin Cấp Tài Khoản Mới (Bảo vệ bởi JWT + Admin Role)
+// 2.2. API Admin Cấp Tài Khoản Mới
 app.post('/api/admin/create-user', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { newUsername, newPassword } = req.body;
@@ -123,7 +143,7 @@ app.post('/api/admin/create-user', authenticateToken, requireAdmin, async (req, 
 app.post('/api/change-password', authenticateToken, async (req, res) => {
   try {
     const { oldPassword, newPassword } = req.body;
-    const username = req.user.username; // Lấy từ Token đã xác thực
+    const username = req.user.username;
 
     const user = await usersDb.findOne({ username });
     if (!user) return res.status(400).json({ success: false, message: 'Tài khoản không tồn tại!' });
@@ -150,10 +170,6 @@ let lastNumberFourTime = null;
 let lastNumberFourMap = null;
 let previousExpectedTimeStr = null;
 let currentDelayComment = null;
-
-io.on('connection', (socket) => {
-  console.log('🟟 App Desktop đã kết nối thành công!');
-});
 
 function isTargetBoss(bossName) {
   if (!bossName) return false;
@@ -295,6 +311,7 @@ async function sendDiscordEmbed(item) {
     currentDelayComment = delayComment;
   }
 
+  // Phát Socket Realtime tới các App kết nối
   io.emit('new-boss', {
     bossName: info.bossName,
     mapName: info.mapName,
@@ -455,7 +472,6 @@ async function sendDivineItemWebhook(item) {
   }
 }
 
-// Cắt tỉa Set để tránh tràn bộ nhớ
 function cleanupSet(setInstance, maxSize = 800, keepSize = 400) {
   if (setInstance.size > maxSize) {
     const arr = Array.from(setInstance);
@@ -524,7 +540,6 @@ async function fetchBossApi() {
       }
     }
 
-    // Dọn dẹp bộ nhớ định kỳ cho cả 3 Sets
     cleanupSet(processedIds);
     cleanupSet(processedMaintenanceIds);
     cleanupSet(processedItemIds);
@@ -532,7 +547,6 @@ async function fetchBossApi() {
   } catch (error) {
     console.error('[API Fetch Error]:', error.message);
   } finally {
-    // Đảm bảo không bị đè request liên tục
     setTimeout(fetchBossApi, 5000);
   }
 }
