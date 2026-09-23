@@ -3,7 +3,7 @@ const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder
 // =========================================================================
 // 🔑 ĐIỀN TOKEN BOT CỦA BẠN VÀO ĐÂY (GIỮ NGUYÊN DẤU NHÁY ĐƠN '')
 // =========================================================================
-const BOT_TOKEN = 'MTU1MTkxMDkzNTk5NDU3Mjg1MA.G3bKnz.gpd2NJ01wAR-mYu88h8H-1cYyEdWglLJADtBzc';
+const BOT_TOKEN = 'MTU1MTkxMDkzNTk5NDU3Mjg1MA.GtMpzH.2ZA8Yd-6v91ulC6_QpI2w17Dawofg1cTv3gR70';
 
 // --- CẤU HÌNH ID THEO YÊU CẦU ---
 const PUBLIC_CHANNEL_ID = '1552277286747897876';   // Kênh công khai đăng nhập/đăng ký
