@@ -415,18 +415,3 @@ const client = new Client({
     GatewayIntentBits.MessageContent
   ]
 });
-
-const BOT_TOKEN = process.env.DISCORD_TOKEN;
-
-if (BOT_TOKEN) {
-  client.login(BOT_TOKEN)
-    .then(() => {
-      console.log('Bot Discord đã đăng nhập thành công!');
-      setupNhiemVu(client, BOT_TOKEN);
-    })
-    .catch(err => {
-      console.error('Lỗi đăng nhập Bot Discord:', err.message);
-    });
-} else {
-  console.log('Chưa cấu hình DISCORD_TOKEN trong biến môi trường trên Render!');
-}
