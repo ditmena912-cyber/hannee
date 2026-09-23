@@ -1,10 +1,23 @@
-const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, SlashCommandBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, SlashCommandBuilder, REST, Routes } = require('discord.js');
+
+// =========================================================================
+// 🔑 ĐIỀN TOKEN BOT CỦA BẠN VÀO ĐÂY (GIỮ NGUYÊN DẤU NHÁY ĐƠN '')
+// =========================================================================
+const BOT_TOKEN = 'ĐIỀN_TOKEN_BOT_CỦA_BẠN_VÀO_ĐÂY';
 
 // --- CẤU HÌNH ID THEO YÊU CẦU ---
-const PUBLIC_CHANNEL_ID = '1552277286747897876';   // Kênh công khai thông báo
-const PRIVATE_ROOM_ID = '1552277666588270592';      // ID phòng riêng tư / voice channel
-const PRIVATE_ROLE_ID = 'THEM_ID_ROLE_PHONG_RIENG_VAO_DAY'; // ID Role cấp khi vào phòng (Hãy thay ID role thật vào đây)
-const SUPER_ADMIN_ID = '979587101328834621';      // ID Admin quản lý tất cả
+const PUBLIC_CHANNEL_ID = '1552277286747897876';   // Kênh công khai đăng nhập/đăng ký
+const PRIVATE_ROOM_ID = '1552277666588270592';      // ID phòng riêng / voice channel
+const PRIVATE_ROLE_ID = '1551998207116968016';      // ID Role cấp khi đăng nhập thành công và xóa khi đăng xuất
+const SUPER_ADMIN_ID = '979587101328834621';      // ID Super Admin quản lý tất cả
+
+const client = new Client({
+    intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.GuildMembers
+    ]
+});
 
 // --- DATABASE BỘ NHỚ TẠM ---
 const accounts = new Map();       // Lưu tài khoản: username -> { password, nickname, userId }
@@ -14,10 +27,6 @@ const subAdmins2 = new Set();     // Admin cấp 2
 const superAdmins = new Set([SUPER_ADMIN_ID]);
 
 // Kiểm tra quyền Admin
-function isAdmin(userId) {
-    return superAdmins.has(userId) || subAdmins1.has(userId) || subAdmins2.has(userId);
-}
-
 function isSuperAdmin(userId) {
     return superAdmins.has(userId);
 }
@@ -34,7 +43,7 @@ async function getCountInPrivateRoom(guild) {
 }
 
 // Cập nhật hoặc gửi tin nhắn điều khiển ở kênh công khai
-async function updatePublicPanel(client, guild) {
+async function updatePublicPanel(guild) {
     try {
         const channel = await guild.channels.fetch(PUBLIC_CHANNEL_ID).catch(() => null);
         if (!channel) return;
@@ -43,7 +52,7 @@ async function updatePublicPanel(client, guild) {
 
         const embed = new EmbedBuilder()
             .setColor(0x00AEFF)
-            .setTitle('🎯 TRÊN KHU LÀM NHIỆM VỤ TIỂU ĐỘI SÁT THỦ')
+            .setTitle('🎯 KHU LÀM NHIỆM VỤ TIỂU ĐỘI SÁT THỦ')
             .setDescription('Chào mừng anh em đến với khu làm nhiệm vụ chuyên nghiệp cùng anh em.\n\n' +
                 '📊 **Hiện Đang có ' + onlineCount + ' người tham gia làm nhiệm vụ.**\n\n' +
                 '⚠️ **LƯU Ý TRƯỚC KHI ĐĂNG KÍ VÀ ĐĂNG NHẬP:**\n' +
@@ -60,7 +69,6 @@ async function updatePublicPanel(client, guild) {
             new ButtonBuilder().setCustomId('nv_btn_late').setLabel('⏰ Late').setStyle(ButtonStyle.Danger)
         );
 
-        // Tìm tin nhắn cũ của bot trong kênh để cập nhật, nếu chưa có thì gửi mới
         const messages = await channel.messages.fetch({ limit: 10 }).catch(() => null);
         let existingMsg = messages ? messages.find(m => m.author.id === client.user.id && m.embeds.length > 0) : null;
 
@@ -74,18 +82,31 @@ async function updatePublicPanel(client, guild) {
     }
 }
 
-// Đăng ký Slash Commands cho phân quyền
-function getMissionCommands() {
-    return [
+client.once('ready', async () => {
+    console.log(`Bot Nhiệm Vụ đã đăng nhập thành công: ${client.user.tag}`);
+
+    // Đăng ký Slash Commands quản lý Admin
+    const commands = [
         new SlashCommandBuilder().setName('addadmin1').setDescription('[Super Admin] Thêm Admin cấp 1')
             .addUserOption(opt => opt.setName('user').setDescription('Chọn thành viên').setRequired(true)),
         new SlashCommandBuilder().setName('addadmin2').setDescription('[Admin] Thêm Admin cấp 2')
             .addUserOption(opt => opt.setName('user').setDescription('Chọn thành viên').setRequired(true)),
     ].map(cmd => cmd.toJSON());
-}
 
-// Xử lý toàn bộ sự kiện nút bấm, modal, lệnh
-async function handleMissionInteraction(interaction) {
+    const rest = new REST({ version: '10' }).setToken(BOT_TOKEN);
+    try {
+        await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
+        console.log('Đã đăng ký lệnh quản lý Admin thành công!');
+    } catch (e) {
+        console.error(e);
+    }
+
+    client.guilds.cache.forEach(guild => {
+        updatePublicPanel(guild);
+    });
+});
+
+client.on('interactionCreate', async (interaction) => {
     const { user, guild } = interaction;
 
     // --- XỬ LÝ SLASH COMMAND ---
@@ -143,7 +164,7 @@ async function handleMissionInteraction(interaction) {
             return await interaction.showModal(modal);
         }
 
-        // Đăng xuất
+        // Đăng xuất (Thu hồi/xóa role)
         if (customId === 'nv_btn_logout') {
             if (!sessions.has(user.id)) {
                 return interaction.reply({ content: '⚠️ Bạn chưa đăng nhập tài khoản nào!', ephemeral: true });
@@ -151,7 +172,7 @@ async function handleMissionInteraction(interaction) {
 
             sessions.delete(user.id);
 
-            // Xóa role phòng riêng tư khi đăng xuất
+            // Xóa role khi đăng xuất
             try {
                 const member = await guild.members.fetch(user.id);
                 if (member.roles.cache.has(PRIVATE_ROLE_ID)) {
@@ -159,7 +180,7 @@ async function handleMissionInteraction(interaction) {
                 }
             } catch (e) {}
 
-            await updatePublicPanel(interaction.client, guild);
+            await updatePublicPanel(guild);
             return interaction.reply({ content: '🔒 Đã đăng xuất thành công và tự động thu hồi quyền phòng riêng!', ephemeral: true });
         }
 
@@ -185,7 +206,7 @@ async function handleMissionInteraction(interaction) {
             try {
                 const member = await guild.members.fetch(user.id);
                 await member.roles.add(PRIVATE_ROLE_ID);
-                await updatePublicPanel(interaction.client, guild);
+                await updatePublicPanel(guild);
                 return interaction.reply({ content: '✅ Xác nhận thành công! Bạn đã được cấp quyền vào phòng riêng tại <#' + PRIVATE_ROOM_ID + '>. Chúc bạn làm nhiệm vụ tốt!', ephemeral: true });
             } catch (e) {
                 return interaction.reply({ content: '❌ Không thể cấp role phòng riêng, vui lòng liên hệ Admin!', ephemeral: true });
@@ -205,7 +226,7 @@ async function handleMissionInteraction(interaction) {
     if (interaction.isModalSubmit()) {
         const customId = interaction.customId;
 
-        // Xử lý Đăng Ký (Phôi đăng ký yêu cầu)
+        // Xử lý Đăng Ký
         if (customId === 'nv_modal_register') {
             const username = interaction.fields.getTextInputValue('reg_username').trim();
             const password = interaction.fields.getTextInputValue('reg_password');
@@ -223,24 +244,23 @@ async function handleMissionInteraction(interaction) {
             accounts.set(username, { password, nickname, userId: user.id });
             sessions.set(user.id, { username, nickname });
 
-            // Cấp role phòng riêng sau khi đăng ký thành công
+            // Cấp role ngay khi đăng ký (và đăng nhập) thành công
             try {
                 const member = await guild.members.fetch(user.id);
                 await member.roles.add(PRIVATE_ROLE_ID);
             } catch (e) {}
 
-            await updatePublicPanel(interaction.client, guild);
+            await updatePublicPanel(guild);
 
-            // Bảng điều khiển cá nhân (chỉ hiển thị cho người chơi thấy)
             const rowUserPanel = new ActionRowBuilder().addComponents(
                 new ButtonBuilder().setCustomId('nv_btn_my_info').setLabel('👤 Thông Tin Của Tôi').setStyle(ButtonStyle.Primary),
                 new ButtonBuilder().setCustomId('nv_btn_logout').setLabel('🚪 Đăng Xuất').setStyle(ButtonStyle.Danger)
             );
 
             return interaction.reply({
-                content: `🎉 Đăng ký và đăng nhập thành công!\n• Biệt danh: **${nickname}**\n• Bạn đã được cấp quyền vào phòng riêng.`,
+                content: `🎉 Đăng ký và đăng nhập thành công!\n• Biệt danh: **${nickname}**\n• Bạn đã được cấp quyền role phòng riêng.`,
                 components: [rowUserPanel],
-                ephemeral: true // Tất cả tin nhắn đăng kí đăng nhập chỉ hiển thị cho mình người chơi thấy
+                ephemeral: true
             });
         }
 
@@ -256,13 +276,13 @@ async function handleMissionInteraction(interaction) {
 
             sessions.set(user.id, { username, nickname: acc.nickname });
 
-            // Cấp role phòng riêng
+            // Cấp role khi đăng nhập thành công
             try {
                 const member = await guild.members.fetch(user.id);
                 await member.roles.add(PRIVATE_ROLE_ID);
             } catch (e) {}
 
-            await updatePublicPanel(interaction.client, guild);
+            await updatePublicPanel(guild);
 
             const rowUserPanel = new ActionRowBuilder().addComponents(
                 new ButtonBuilder().setCustomId('nv_btn_my_info').setLabel('👤 Thông Tin Của Tôi').setStyle(ButtonStyle.Primary),
@@ -270,12 +290,12 @@ async function handleMissionInteraction(interaction) {
             );
 
             return interaction.reply({
-                content: `✅ Đăng nhập thành công với biệt danh: **${acc.nickname}**!`,
+                content: `✅ Đăng nhập thành công với biệt danh: **${acc.nickname}**! Bạn đã được cấp role phòng riêng.`,
                 components: [rowUserPanel],
-                ephemeral: true // Chỉ hiển thị cho mình người chơi thấy
+                ephemeral: true
             });
         }
     }
-}
+});
 
-module.exports = { updatePublicPanel, getMissionCommands, handleMissionInteraction };
+client.login(BOT_TOKEN);
