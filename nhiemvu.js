@@ -1,15 +1,15 @@
 const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, SlashCommandBuilder, REST, Routes } = require('discord.js');
 
 // =========================================================================
-// 🔑 ĐIỀN TOKEN BOT CỦA BẠN VÀO ĐÂY (GIỮ NGUYÊN DẤU NHÁY ĐƠN '')
+// 🔑 TOKEN BOT ĐÃ ĐƯỢC CẬP NHẬT CHÍNH XÁC
 // =========================================================================
 const BOT_TOKEN = 'MTU1MjI4NDE5ODUyMDIzNDA2NA.GxEkwr.t9jEnqeSVQGyz38wjZI_LNo2PazkTSr_woV9_g';
 
 // --- CẤU HÌNH ID THEO YÊU CẦU ---
 const PUBLIC_CHANNEL_ID = '1552277286747897876';   // Kênh công khai đăng nhập/đăng ký
-const PRIVATE_ROOM_ID = '1552277666588270592';      // ID phòng riêng / voice channel
-const PRIVATE_ROLE_ID = '1551998207116968016';      // ID Role cấp khi đăng nhập thành công và xóa khi đăng xuất
-const SUPER_ADMIN_ID = '979587101328834621';      // ID Super Admin quản lý tất cả
+const PRIVATE_ROOM_ID = '1552277666588270592';       // ID phòng riêng / voice channel
+const PRIVATE_ROLE_ID = '1551998207116968016';       // ID Role cấp khi đăng nhập thành công và xóa khi đăng xuất
+const SUPER_ADMIN_ID = '979587101328834621';       // ID Super Admin quản lý tất cả
 
 const client = new Client({
     intents: [
