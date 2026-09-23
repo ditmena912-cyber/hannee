@@ -331,7 +331,7 @@ async function sendDiscordEmbed(item) {
     ];
 
     if (delayComment) {
-      fields.push({ name: "🟟 Đánh giá độ trễ", value: `*(${delayComment})*`, inline: false });
+      fields.push({ name: "⏱️ Đánh giá độ trễ", value: `*(${delayComment})*`, inline: false });
     }
 
     fields.push({ name: "🟟 Hỗ trợ Zalo", value: "Lỗi thông báo liên hệ Zalo **0366 517 900** (Han Đây)", inline: false });
@@ -378,7 +378,7 @@ async function sendDiscordEmbed(item) {
       ];
 
       if (currentDelayComment) {
-        predictionFields.push({ name: "🟟 Đánh giá độ trễ", value: `*(${currentDelayComment})*`, inline: false });
+        predictionFields.push({ name: "⏱️ Đánh giá độ trễ", value: `*(${currentDelayComment})*`, inline: false });
       }
 
       predictionFields.push({ name: "🟟 Hỗ trợ Zalo", value: "Lỗi thông báo liên hệ Zalo **0366 517 900** (Han Đây)", inline: false });
