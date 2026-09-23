@@ -403,6 +403,3 @@ app.listen(PORT, () => {
 });
 // --- Code thông báo boss / bảo trì cũ của bạn ở phía trên ---
 // ...
-
-// Gọi file tài xỉu chạy độc lập bên dưới
-require('./taixiu.js');
