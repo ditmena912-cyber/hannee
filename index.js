@@ -1,7 +1,12 @@
 const express = require('express');
 const axios = require('axios');
+const http = require('http'); // 🟟 Thêm thư viện http
+const { Server } = require('socket.io'); // 🟟 Thêm thư viện socket.io
 
 const app = express();
+const server = http.createServer(app); // 🟟 Tạo HTTP server
+const io = new Server(server, { cors: { origin: "*" } }); // 🟟 Khởi tạo Socket.io
+
 app.use(express.json());
 
 let isBaselineLoaded = false;
@@ -13,6 +18,11 @@ let lastNumberFourTime = null;
 let lastNumberFourMap = null;
 let previousExpectedTimeStr = null;
 let currentDelayComment = null;
+
+// Lắng nghe kết nối từ App Desktop trên PC
+io.on('connection', (socket) => {
+  console.log('🟟 App Desktop đã kết nối thành công!');
+});
 
 function isTargetBoss(bossName) {
   if (!bossName) return false;
@@ -154,9 +164,6 @@ function extractInfo(item) {
 }
 
 async function sendDiscordEmbed(item) {
-  const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
-  if (!webhookUrl) return;
-
   const info = extractInfo(item);
   
   if (!isTargetBoss(info.bossName)) return;
@@ -168,36 +175,49 @@ async function sendDiscordEmbed(item) {
     currentDelayComment = delayComment;
   }
 
-  const fields = [
-    { name: "👹 Tên Boss", value: "**" + info.bossName + "**", inline: true },
-    { name: "🗺️ Bản đồ", value: "**" + info.mapName + "**", inline: true },
-    { name: "🌐 Máy chủ", value: "**" + info.serverName + "**", inline: true },
-    { name: "⏰ Thời gian ra", value: "`" + info.timeStr + "`", inline: false }
-  ];
+  // 🟟 [PHÁT DỮ LIỆU SANG APP DESKTOP REALTIME]
+  io.emit('new-boss', {
+    bossName: info.bossName,
+    mapName: info.mapName,
+    serverName: info.serverName,
+    timeStr: info.timeStr,
+    timestamp: new Date().getTime(),
+    delayComment: delayComment
+  });
 
-  if (delayComment) {
-    fields.push({ name: "📊 Đánh giá độ trễ", value: "*(" + delayComment + ")*", inline: false });
-  }
+  const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
+  if (webhookUrl) {
+    const fields = [
+      { name: "🟟 Tên Boss", value: "**" + info.bossName + "**", inline: true },
+      { name: "🟟️ Bản đồ", value: "**" + info.mapName + "**", inline: true },
+      { name: "🟟️ Máy chủ", value: "**" + info.serverName + "**", inline: true },
+      { name: "⏰ Thời gian ra", value: "`" + info.timeStr + "`", inline: false }
+    ];
 
-  fields.push({ name: "📞 Hỗ trợ Zalo", value: "Lỗi thông báo liên hệ Zalo **0366 517 900** (Han Đây)", inline: false });
+    if (delayComment) {
+      fields.push({ name: "🟟 Đánh giá độ trễ", value: "*(" + delayComment + ")*", inline: false });
+    }
 
-  const payloadBoss = {
-    username: "Han Ne",
-    avatar_url: "https://i.imgur.com/4M34hi2.png",
-    embeds: [
-      {
-        title: "🚨 BOSS TIỂU ĐỘI SÁT THỦ XUẤT HIỆN! 🚨",
-        color: 16724736,
-        fields: fields,
-        footer: { text: "⚔️ Hệ Thống Báo Boss 15 Sao ⚔️ | Anh Han Bảo Vậy" }
-      }
-    ]
-  };
+    fields.push({ name: "🟟 Hỗ trợ Zalo", value: "Lỗi thông báo liên hệ Zalo **0366 517 900** (Han Đây)", inline: false });
 
-  try {
-    await axios.post(webhookUrl, payloadBoss);
-  } catch (err) {
-    console.error("[Discord Error] Lỗi:", err.message);
+    const payloadBoss = {
+      username: "Han Ne",
+      avatar_url: "https://i.imgur.com/4M34hi2.png",
+      embeds: [
+        {
+          title: "🟟 BOSS TIỂU ĐỘI SÁT THỦ XUẤT HIỆN! 🟟",
+          color: 16724736,
+          fields: fields,
+          footer: { text: "⚔️ Hệ Thống Báo Boss 15 Sao ⚔️ | Anh Han Bảo Vậy" }
+        }
+      ]
+    };
+
+    try {
+      await axios.post(webhookUrl, payloadBoss);
+    } catch (err) {
+      console.error("[Discord Error] Lỗi:", err.message);
+    }
   }
 
   if (isCaptain(info.bossName)) {
@@ -210,18 +230,28 @@ async function sendDiscordEmbed(item) {
       if (expectedTimeStr) {
         previousExpectedTimeStr = expectedTimeStr;
 
+        // 🟟 [PHÁT DỮ LIỆU DỰ KIẾN VỀ APP DESKTOP]
+        io.emit('new-prediction', {
+          numberFourTime: formattedNumberFourTime,
+          mapName: predictionMap,
+          expectedTime: expectedTimeStr,
+          expectedSupportTime: expectedSupportTimeStr,
+          delayComment: currentDelayComment,
+          timestamp: new Date().getTime()
+        });
+
         const predictionFields = [
-          { name: "📌 Số 4 xuất hiện", value: "`" + formattedNumberFourTime + "`", inline: true },
-          { name: "🗺️ Bản đồ Số 4", value: "**" + predictionMap + "**", inline: true },
+          { name: "🟟 Số 4 xuất hiện", value: "`" + formattedNumberFourTime + "`", inline: true },
+          { name: "🟟️ Bản đồ Số 4", value: "**" + predictionMap + "**", inline: true },
           { name: "⏰ Dự kiến ra tiếp", value: "**" + expectedTimeStr + "**", inline: false },
           { name: "⏰ Dự kiến hỗ trợ", value: "**" + expectedSupportTimeStr + "**", inline: false }
         ];
 
         if (currentDelayComment) {
-          predictionFields.push({ name: "📊 Đánh giá độ trễ", value: "*(" + currentDelayComment + ")*", inline: false });
+          predictionFields.push({ name: "🟟 Đánh giá độ trễ", value: "*(" + currentDelayComment + ")*", inline: false });
         }
 
-        predictionFields.push({ name: "📞 Hỗ trợ Zalo", value: "Lỗi thông báo liên hệ Zalo **0366 517 900** (Han Đây)", inline: false });
+        predictionFields.push({ name: "🟟 Hỗ trợ Zalo", value: "Lỗi thông báo liên hệ Zalo **0366 517 900** (Han Đây)", inline: false });
 
         const payloadPrediction = {
           username: "Han Ne",
@@ -236,39 +266,43 @@ async function sendDiscordEmbed(item) {
           ]
         };
 
-        setTimeout(async () => {
-          try {
-            await axios.post(webhookUrl, payloadPrediction);
-          } catch (err) {
-            console.error("[Discord Error Prediction] Lỗi:", err.message);
-          }
-        }, 1000);
+        if (webhookUrl) {
+          setTimeout(async () => {
+            try {
+              await axios.post(webhookUrl, payloadPrediction);
+            } catch (err) {
+              console.error("[Discord Error Prediction] Lỗi:", err.message);
+            }
+          }, 1000);
+        }
       }
     }
   }
 }
 
 async function sendMaintenanceWebhook(item) {
-  const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
-  if (!webhookUrl) return;
-
   const rawTime = item.time || new Date().toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" });
   const formattedTime = formatTimeWithoutDate(rawTime);
   const contentText = item.value || item.title || "Hệ thống chuẩn bị bảo trì.";
   const serverName = item.server || "15 sao";
+
+  io.emit('new-maintenance', { formattedTime, contentText, serverName });
+
+  const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
+  if (!webhookUrl) return;
 
   const maintenancePayload = {
     username: "millims15",
     avatar_url: "https://i.imgur.com/4M34hi2.png",
     embeds: [
       {
-        title: "🛠️ THÔNG BÁO BẢO TRÌ HỆ THỐNG 🛠️",
+        title: "🟟️ THÔNG BÁO BẢO TRÌ HỆ THỐNG 🟟️",
         color: 16776960,
         fields: [
-          { name: "🌐 Máy chủ", value: "**" + serverName + "**", inline: true },
+          { name: "🟟️ Máy chủ", value: "**" + serverName + "**", inline: true },
           { name: "⏰ Thời gian", value: "`" + formattedTime + "`", inline: false },
-          { name: "📝 Nội dung", value: String(contentText), inline: false },
-          { name: "📞 Hỗ trợ Zalo", value: "Lỗi thông báo liên hệ Zalo **0366 517 900** (Han Đây)", inline: false }
+          { name: "🟟 Nội dung", value: String(contentText), inline: false },
+          { name: "🟟 Hỗ trợ Zalo", value: "Lỗi thông báo liên hệ Zalo **0366 517 900** (Han Đây)", inline: false }
         ],
         footer: { text: "⚔️ Hệ Thống Báo Boss 15 Sao ⚔️ | Anh Han Bảo Vậy" }
       }
@@ -283,14 +317,16 @@ async function sendMaintenanceWebhook(item) {
 }
 
 async function sendDivineItemWebhook(item) {
-  const webhookUrl = process.env.DISCORD_WEBHOOK_URL_2 || process.env.DISCORD_WEBHOOK_URL;
-  if (!webhookUrl) return;
-
   const rawTime = item.time || item.thoiGian || new Date().toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" });
   const player = item.player || item.nguoiChoi || item.name || "Không rõ";
   const equipmentName = item.equipment || item.trangbi || item.value || item.title || "Đồ thần linh";
   const mapName = item.map || item.mapName || "Không rõ";
   const serverName = item.server || "15 sao";
+
+  io.emit('new-divine-item', { player, equipmentName, mapName, serverName, rawTime });
+
+  const webhookUrl = process.env.DISCORD_WEBHOOK_URL_2 || process.env.DISCORD_WEBHOOK_URL;
+  if (!webhookUrl) return;
 
   const divinePayload = {
     username: "millims15",
@@ -300,12 +336,12 @@ async function sendDivineItemWebhook(item) {
         title: "✨ THÔNG BÁO RƠI ĐỒ THẦN LINH ✨",
         color: 65535,
         fields: [
-          { name: "🌐 Máy chủ", value: "**" + serverName + "**", inline: true },
-          { name: "👤 Người chơi", value: "**" + player + "**", inline: true },
-          { name: "🎁 Trang bị", value: "**" + equipmentName + "**", inline: false },
-          { name: "🗺️ Bản đồ", value: "**" + mapName + "**", inline: false },
+          { name: "🟟️ Máy chủ", value: "**" + serverName + "**", inline: true },
+          { name: "🟟 Người chơi", value: "**" + player + "**", inline: true },
+          { name: "🟟️ Trang bị", value: "**" + equipmentName + "**", inline: false },
+          { name: "🟟️ Bản đồ", value: "**" + mapName + "**", inline: false },
           { name: "⏰ Thời gian", value: "`" + rawTime + "`", inline: false },
-          { name: "📞 Hỗ trợ Zalo", value: "Lỗi thông báo liên hệ Zalo **0366 517 900** (Han Đây)", inline: false }
+          { name: "🟟 Hỗ trợ Zalo", value: "Lỗi thông báo liên hệ Zalo **0366 517 900** (Han Đây)", inline: false }
         ],
         footer: { text: "⚔️ Hệ Thống Báo Đồ Thần Linh 15 Sao ⚔️ | Anh Han Bảo Vậy" }
       }
@@ -397,7 +433,8 @@ app.get('/', (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
+// 🟟 Thay app.listen thành server.listen
+server.listen(PORT, () => {
   console.log("Server đang chạy tại port " + PORT);
   fetchBossApi();
 });
