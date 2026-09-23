@@ -1,12 +1,12 @@
 const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, SlashCommandBuilder, REST, Routes } = require('discord.js');
 const http = require('http');
 
-// Tạo HTTP Server nhỏ để Render không bị lỗi Port / Health Check
+// Tạo HTTP Server và bắt buộc dùng cổng của Render để tránh lỗi EADDRINUSE
 const server = http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
     res.end('Bot Tai Xiu is running 24/7!\n');
 });
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => {
     console.log(`HTTP Server đang lắng nghe trên cổng ${PORT}`);
 });
@@ -150,7 +150,7 @@ const commands = [
 ].map(command => command.toJSON());
 
 client.once('ready', async () => {
-    console.log(`Bot đã sẵn sàng trên Render dưới tên ${client.user.tag}!`);
+    console.log(`Bot đã sẵn sàng dưới tên ${client.user.tag}!`);
     
     const rest = new REST({ version: '10' }).setToken(process.env.GAME_BOT_TOKEN || process.env.DISCORD_TOKEN);
     try {
