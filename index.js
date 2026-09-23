@@ -401,3 +401,8 @@ app.listen(PORT, () => {
   console.log("Server đang chạy tại port " + PORT);
   fetchBossApi();
 });
+// --- Code thông báo boss / bảo trì cũ của bạn ở phía trên ---
+// ...
+
+// Thêm dòng này vào cuối file index.js:
+require('./taixiu.js')(client);
