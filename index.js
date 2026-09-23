@@ -1,5 +1,7 @@
 const express = require('express');
 const axios = require('axios');
+const { Client, GatewayIntentBits } = require('discord.js');
+const { setupNhiemVu } = require('./nhiemvu.js');
 
 const app = express();
 app.use(express.json());
@@ -393,7 +395,7 @@ async function fetchBossApi() {
 setInterval(fetchBossApi, 5000);
 
 app.get('/', (req, res) => {
-  res.send('Boss & Maintenance & Divine Item Monitor Service is running...');
+  res.send('Boss & Maintenance & Divine Item & Mission Monitor Service is running...');
 });
 
 const PORT = process.env.PORT || 3000;
@@ -401,17 +403,10 @@ app.listen(PORT, () => {
   console.log("Server đang chạy tại port " + PORT);
   fetchBossApi();
 });
-// --- Code thông báo boss / bảo trì cũ của bạn ở phía trên ---
-// ...
-// Khởi chạy tính năng nhiệm vụ từ file nhiemvu.js
-const { setupNhiemVu } = require('./nhiemvu.js');
-setupNhiemVu(client, BOT_TOKEN);
-// ==========================================
-// KHỞI TẠO DISCORD BOT CHO TÍNH NĂNG NHIỆM VỤ
-// ==========================================
-const { Client, GatewayIntentBits } = require('discord.js');
-const { setupNhiemVu } = require('./nhiemvu.js');
 
+// ==========================================
+// KHỞI TẠO DISCORD CLIENT CHO TÍNH NĂNG NHIỆM VỤ
+// ==========================================
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -421,19 +416,17 @@ const client = new Client({
   ]
 });
 
-// Lấy Token từ biến môi trường trên Render
 const BOT_TOKEN = process.env.DISCORD_TOKEN;
 
 if (BOT_TOKEN) {
   client.login(BOT_TOKEN)
     .then(() => {
       console.log('Bot Discord đã đăng nhập thành công!');
-      // Gọi hàm setup nhiệm vụ từ file nhiemvu.js
       setupNhiemVu(client, BOT_TOKEN);
     })
     .catch(err => {
       console.error('Lỗi đăng nhập Bot Discord:', err.message);
     });
 } else {
-  console.log('Chưa cấu hình DISCORD_TOKEN trong biến môi trường!');
+  console.log('Chưa cấu hình DISCORD_TOKEN trong biến môi trường trên Render!');
 }
