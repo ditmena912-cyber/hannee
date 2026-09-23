@@ -13,7 +13,6 @@ const TARGET_CHANNEL_ID = '1551915282014933083'; // ID kênh chơi Tài Xỉu
 const ADMIN_CHANNEL_ID = '1551915282014933083';  // ID kênh nhận thông báo duyệt nạp
 const SUPER_ADMIN_ID = '979587101328834621';     // ID Admin tối cao (có toàn quyền)
 
-// Phân loại danh sách Admin
 const superAdmins = new Set([SUPER_ADMIN_ID]);
 const subAdmins = new Set(); // Admin phụ (không thể thêm/xóa admin khác)
 
@@ -28,7 +27,7 @@ let currentGame = {
     totalBetsTai: 0,
     totalBetsXiu: 0,
     betsThisRound: new Map(), 
-    userHistory: new Map(),   // userId -> Array of objects { roundId, choice, amount, result, profit, time }
+    userHistory: new Map(),   
     messageId: null
 };
 
@@ -37,7 +36,7 @@ function getOrCreateUser(discordId, username = 'User') {
         users.set(discordId, {
             discord_id: discordId,
             username: username,
-            balance: 10000, // Tặng mặc định 10,000 vàng trải nghiệm
+            balance: 10000, 
             total_deposit: 0,
             total_withdraw: 0,
             total_win: 0,
@@ -58,7 +57,6 @@ function isAdmin(userId) {
     return superAdmins.has(userId) || subAdmins.has(userId);
 }
 
-// Cập nhật bảng cầu chuẩn phong cách Casino ma trận dọc
 function updateScoreBoard(resultType) {
     if (historyColumns.length === 0) {
         historyColumns.push([resultType]);
@@ -104,7 +102,7 @@ function rollDice() {
 }
 
 client.once('ready', async () => {
-    console.log('🎲 Hệ thống Mini-Game Tài Xỉu phiên bản nâng cao đã sẵn sàng!');
+    console.log('🎲 Hệ thống Mini-Game Tài Xỉu đã sẵn sàng hoạt động!');
     setTimeout(startNewGameCycle, 3000);
 });
 
@@ -143,7 +141,6 @@ async function startNewGameCycle() {
     }
 }
 
-// Vòng lặp đếm ngược mỗi 5 giây
 setInterval(async () => {
     try {
         const channel = await client.channels.fetch(TARGET_CHANNEL_ID);
