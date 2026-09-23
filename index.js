@@ -1,14 +1,90 @@
 const express = require('express');
 const axios = require('axios');
-const http = require('http'); // 🟟 Thêm thư viện http
-const { Server } = require('socket.io'); // 🟟 Thêm thư viện socket.io
+const http = require('http'); // Thêm thư viện http
+const { Server } = require('socket.io'); // Thêm thư viện socket.io
+const bcrypt = require('bcryptjs'); // Thêm thư viện mã hóa mật khẩu
+const Datastore = require('nedb-promises'); // Thêm CSDL file nhẹ lưu tài khoản
 
 const app = express();
-const server = http.createServer(app); // 🟟 Tạo HTTP server
-const io = new Server(server, { cors: { origin: "*" } }); // 🟟 Khởi tạo Socket.io
+const server = http.createServer(app); // Tạo HTTP server
+const io = new Server(server, { cors: { origin: "*" } }); // Khởi tạo Socket.io
 
 app.use(express.json());
 
+// --- 1. CƠ SỞ DỮ LIỆU TÀI KHOẢN ---
+const usersDb = Datastore.create({ filename: './users.db', autoload: true });
+
+// Tự động khởi tạo tài khoản Admin mặc định khi chạy server lần đầu
+async function initAdmin() {
+  const adminExists = await usersDb.findOne({ role: 'admin' });
+  if (!adminExists) {
+    const hashedPassword = await bcrypt.hash('admin123', 10);
+    await usersDb.insert({
+      username: 'admin',
+      password: hashedPassword,
+      role: 'admin'
+    });
+    console.log('✅ Đã khởi tạo tài khoản Admin mặc định: admin / admin123');
+  }
+}
+initAdmin();
+
+// --- 2. API HỆ THỐNG TÀI KHOẢN & ĐĂNG NHẬP ---
+
+// 2.1. API Đăng nhập
+app.post('/api/login', async (req, res) => {
+  const { username, password } = req.body;
+  const user = await usersDb.findOne({ username });
+  
+  if (!user) return res.status(400).json({ success: false, message: 'Tài khoản không tồn tại!' });
+
+  const isMatch = await bcrypt.compare(password, user.password);
+  if (!isMatch) return res.status(400).json({ success: false, message: 'Mật khẩu không chính xác!' });
+
+  res.json({
+    success: true,
+    message: 'Đăng nhập thành công!',
+    user: { username: user.username, role: user.role }
+  });
+});
+
+// 2.2. API Admin Cấp Tài Khoản Mới
+app.post('/api/admin/create-user', async (req, res) => {
+  const { adminUsername, newUsername, newPassword } = req.body;
+
+  const adminUser = await usersDb.findOne({ username: adminUsername, role: 'admin' });
+  if (!adminUser) return res.status(403).json({ success: false, message: 'Chỉ Admin mới có quyền cấp tài khoản!' });
+
+  const existingUser = await usersDb.findOne({ username: newUsername });
+  if (existingUser) return res.status(400).json({ success: false, message: 'Tên tài khoản đã tồn tại!' });
+
+  const hashedPassword = await bcrypt.hash(newPassword, 10);
+  await usersDb.insert({
+    username: newUsername,
+    password: hashedPassword,
+    role: 'user'
+  });
+
+  res.json({ success: true, message: `Đã cấp tài khoản ${newUsername} thành công!` });
+});
+
+// 2.3. API Người Dùng Đổi Mật Khẩu
+app.post('/api/change-password', async (req, res) => {
+  const { username, oldPassword, newPassword } = req.body;
+
+  const user = await usersDb.findOne({ username });
+  if (!user) return res.status(400).json({ success: false, message: 'Tài khoản không tồn tại!' });
+
+  const isMatch = await bcrypt.compare(oldPassword, user.password);
+  if (!isMatch) return res.status(400).json({ success: false, message: 'Mật khẩu cũ không chính xác!' });
+
+  const hashedNewPassword = await bcrypt.hash(newPassword, 10);
+  await usersDb.update({ username }, { $set: { password: hashedNewPassword } });
+
+  res.json({ success: true, message: 'Đổi mật khẩu thành công!' });
+});
+
+// --- 3. BIẾN QUẢN LÝ DỮ LIỆU BOSS & THÔNG BÁO ---
 let isBaselineLoaded = false;
 const processedIds = new Set();
 const processedMaintenanceIds = new Set();
@@ -175,7 +251,7 @@ async function sendDiscordEmbed(item) {
     currentDelayComment = delayComment;
   }
 
-  // 🟟 [PHÁT DỮ LIỆU SANG APP DESKTOP REALTIME]
+  // PHÁT DỮ LIỆU SANG APP DESKTOP REALTIME
   io.emit('new-boss', {
     bossName: info.bossName,
     mapName: info.mapName,
@@ -188,7 +264,7 @@ async function sendDiscordEmbed(item) {
   const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
   if (webhookUrl) {
     const fields = [
-      { name: "🟟 Tên Boss", value: "**" + info.bossName + "**", inline: true },
+      { name: "⚔️ Tên Boss", value: "**" + info.bossName + "**", inline: true },
       { name: "🟟️ Bản đồ", value: "**" + info.mapName + "**", inline: true },
       { name: "🟟️ Máy chủ", value: "**" + info.serverName + "**", inline: true },
       { name: "⏰ Thời gian ra", value: "`" + info.timeStr + "`", inline: false }
@@ -230,7 +306,7 @@ async function sendDiscordEmbed(item) {
       if (expectedTimeStr) {
         previousExpectedTimeStr = expectedTimeStr;
 
-        // 🟟 [PHÁT DỮ LIỆU DỰ KIẾN VỀ APP DESKTOP]
+        // PHÁT DỮ LIỆU DỰ KIẾN VỀ APP DESKTOP
         io.emit('new-prediction', {
           numberFourTime: formattedNumberFourTime,
           mapName: predictionMap,
@@ -433,7 +509,6 @@ app.get('/', (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-// 🟟 Thay app.listen thành server.listen
 server.listen(PORT, () => {
   console.log("Server đang chạy tại port " + PORT);
   fetchBossApi();
