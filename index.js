@@ -1,87 +1,143 @@
 const express = require('express');
 const axios = require('axios');
-const http = require('http'); // Thêm thư viện http
-const { Server } = require('socket.io'); // Thêm thư viện socket.io
-const bcrypt = require('bcryptjs'); // Thêm thư viện mã hóa mật khẩu
-const Datastore = require('nedb-promises'); // Thêm CSDL file nhẹ lưu tài khoản
+const http = require('http');
+const { Server } = require('socket.io');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+const Datastore = require('nedb-promises');
+
+const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_key_15sao_han_ne';
+const PORT = process.env.PORT || 3000;
 
 const app = express();
-const server = http.createServer(app); // Tạo HTTP server
-const io = new Server(server, { cors: { origin: "*" } }); // Khởi tạo Socket.io
+const server = http.createServer(app);
+const io = new Server(server, { cors: { origin: "*" } });
 
 app.use(express.json());
 
 // --- 1. CƠ SỞ DỮ LIỆU TÀI KHOẢN ---
 const usersDb = Datastore.create({ filename: './users.db', autoload: true });
 
-// Tự động khởi tạo tài khoản Admin mặc định khi chạy server lần đầu
 async function initAdmin() {
-  const adminExists = await usersDb.findOne({ role: 'admin' });
-  if (!adminExists) {
-    const hashedPassword = await bcrypt.hash('admin123', 10);
-    await usersDb.insert({
-      username: 'admin',
-      password: hashedPassword,
-      role: 'admin'
-    });
-    console.log('✅ Đã khởi tạo tài khoản Admin mặc định: admin / admin123');
+  try {
+    const adminExists = await usersDb.findOne({ role: 'admin' });
+    if (!adminExists) {
+      const hashedPassword = await bcrypt.hash('admin123', 10);
+      await usersDb.insert({
+        username: 'admin',
+        password: hashedPassword,
+        role: 'admin'
+      });
+      console.log('✅ Đã khởi tạo tài khoản Admin mặc định: admin / admin123');
+    }
+  } catch (err) {
+    console.error('❌ Lỗi khởi tạo Admin:', err.message);
   }
 }
 initAdmin();
+
+// --- MIDDLEWARE XÁC THỰC JWT ---
+function authenticateToken(req, res, next) {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+
+  if (!token) {
+    return res.status(401).json({ success: false, message: 'Yêu cầu Token xác thực!' });
+  }
+
+  jwt.verify(token, JWT_SECRET, (err, user) => {
+    if (err) return res.status(403).json({ success: false, message: 'Token không hợp lệ hoặc đã hết hạn!' });
+    req.user = user;
+    next();
+  });
+}
+
+function requireAdmin(req, res, next) {
+  if (req.user && req.user.role === 'admin') {
+    next();
+  } else {
+    res.status(403).json({ success: false, message: 'Chỉ Admin mới có quyền thực hiện thao tác này!' });
+  }
+}
 
 // --- 2. API HỆ THỐNG TÀI KHOẢN & ĐĂNG NHẬP ---
 
 // 2.1. API Đăng nhập
 app.post('/api/login', async (req, res) => {
-  const { username, password } = req.body;
-  const user = await usersDb.findOne({ username });
-  
-  if (!user) return res.status(400).json({ success: false, message: 'Tài khoản không tồn tại!' });
+  try {
+    const { username, password } = req.body;
+    if (!username || !password) {
+      return res.status(400).json({ success: false, message: 'Vui lòng nhập đầy đủ thông tin!' });
+    }
 
-  const isMatch = await bcrypt.compare(password, user.password);
-  if (!isMatch) return res.status(400).json({ success: false, message: 'Mật khẩu không chính xác!' });
+    const user = await usersDb.findOne({ username });
+    if (!user) return res.status(400).json({ success: false, message: 'Tài khoản không tồn tại!' });
 
-  res.json({
-    success: true,
-    message: 'Đăng nhập thành công!',
-    user: { username: user.username, role: user.role }
-  });
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) return res.status(400).json({ success: false, message: 'Mật khẩu không chính xác!' });
+
+    // Tạo JWT Token có thời hạn 7 ngày
+    const token = jwt.sign(
+      { username: user.username, role: user.role },
+      JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+
+    res.json({
+      success: true,
+      message: 'Đăng nhập thành công!',
+      token,
+      user: { username: user.username, role: user.role }
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Lỗi server: ' + err.message });
+  }
 });
 
-// 2.2. API Admin Cấp Tài Khoản Mới
-app.post('/api/admin/create-user', async (req, res) => {
-  const { adminUsername, newUsername, newPassword } = req.body;
+// 2.2. API Admin Cấp Tài Khoản Mới (Bảo vệ bởi JWT + Admin Role)
+app.post('/api/admin/create-user', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { newUsername, newPassword } = req.body;
 
-  const adminUser = await usersDb.findOne({ username: adminUsername, role: 'admin' });
-  if (!adminUser) return res.status(403).json({ success: false, message: 'Chỉ Admin mới có quyền cấp tài khoản!' });
+    if (!newUsername || !newPassword) {
+      return res.status(400).json({ success: false, message: 'Thiếu thông tin tài khoản mới!' });
+    }
 
-  const existingUser = await usersDb.findOne({ username: newUsername });
-  if (existingUser) return res.status(400).json({ success: false, message: 'Tên tài khoản đã tồn tại!' });
+    const existingUser = await usersDb.findOne({ username: newUsername });
+    if (existingUser) return res.status(400).json({ success: false, message: 'Tên tài khoản đã tồn tại!' });
 
-  const hashedPassword = await bcrypt.hash(newPassword, 10);
-  await usersDb.insert({
-    username: newUsername,
-    password: hashedPassword,
-    role: 'user'
-  });
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    await usersDb.insert({
+      username: newUsername,
+      password: hashedPassword,
+      role: 'user'
+    });
 
-  res.json({ success: true, message: `Đã cấp tài khoản ${newUsername} thành công!` });
+    res.json({ success: true, message: `Đã cấp tài khoản ${newUsername} thành công!` });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Lỗi server: ' + err.message });
+  }
 });
 
 // 2.3. API Người Dùng Đổi Mật Khẩu
-app.post('/api/change-password', async (req, res) => {
-  const { username, oldPassword, newPassword } = req.body;
+app.post('/api/change-password', authenticateToken, async (req, res) => {
+  try {
+    const { oldPassword, newPassword } = req.body;
+    const username = req.user.username; // Lấy từ Token đã xác thực
 
-  const user = await usersDb.findOne({ username });
-  if (!user) return res.status(400).json({ success: false, message: 'Tài khoản không tồn tại!' });
+    const user = await usersDb.findOne({ username });
+    if (!user) return res.status(400).json({ success: false, message: 'Tài khoản không tồn tại!' });
 
-  const isMatch = await bcrypt.compare(oldPassword, user.password);
-  if (!isMatch) return res.status(400).json({ success: false, message: 'Mật khẩu cũ không chính xác!' });
+    const isMatch = await bcrypt.compare(oldPassword, user.password);
+    if (!isMatch) return res.status(400).json({ success: false, message: 'Mật khẩu cũ không chính xác!' });
 
-  const hashedNewPassword = await bcrypt.hash(newPassword, 10);
-  await usersDb.update({ username }, { $set: { password: hashedNewPassword } });
+    const hashedNewPassword = await bcrypt.hash(newPassword, 10);
+    await usersDb.update({ username }, { $set: { password: hashedNewPassword } });
 
-  res.json({ success: true, message: 'Đổi mật khẩu thành công!' });
+    res.json({ success: true, message: 'Đổi mật khẩu thành công!' });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Lỗi server: ' + err.message });
+  }
 });
 
 // --- 3. BIẾN QUẢN LÝ DỮ LIỆU BOSS & THÔNG BÁO ---
@@ -95,7 +151,6 @@ let lastNumberFourMap = null;
 let previousExpectedTimeStr = null;
 let currentDelayComment = null;
 
-// Lắng nghe kết nối từ App Desktop trên PC
 io.on('connection', (socket) => {
   console.log('🟟 App Desktop đã kết nối thành công!');
 });
@@ -147,37 +202,31 @@ function isDivineItem(item) {
   );
 }
 
-function formatTimeWithoutDate(timeStr) {
-  try {
-    if (!timeStr) return "Chưa xác định";
-    const date = new Date(timeStr.replace(/-/g, '/'));
-    if (isNaN(date.getTime())) {
-      return timeStr.replace(/^\d{4}[-/]\d{1,2}[-/]\d{1,2}\s*/, '');
-    }
+function parseCustomDate(timeStr) {
+  if (!timeStr) return null;
+  const date = new Date(timeStr.replace(/-/g, '/'));
+  return isNaN(date.getTime()) ? null : date;
+}
 
-    const h = String(date.getHours()).padStart(2, '0');
-    const m = String(date.getMinutes()).padStart(2, '0');
-    const s = String(date.getSeconds()).padStart(2, '0');
-    return h + ":" + m + ":" + s;
-  } catch (e) {
-    return timeStr;
-  }
+function formatTimeWithoutDate(timeStr) {
+  const date = parseCustomDate(timeStr);
+  if (!date) return timeStr ? timeStr.replace(/^\d{4}[-/]\d{1,2}[-/]\d{1,2}\s*/, '') : "Chưa xác định";
+
+  const h = String(date.getHours()).padStart(2, '0');
+  const m = String(date.getMinutes()).padStart(2, '0');
+  const s = String(date.getSeconds()).padStart(2, '0');
+  return `${h}:${m}:${s}`;
 }
 
 function calculatePredictionCustom(numberFourTimeStr, addMinutes) {
-  try {
-    if (!numberFourTimeStr) return null;
-    const actualDate = new Date(numberFourTimeStr.replace(/-/g, '/'));
-    if (isNaN(actualDate.getTime())) return null;
+  const actualDate = parseCustomDate(numberFourTimeStr);
+  if (!actualDate) return null;
 
-    const expectedDate = new Date(actualDate.getTime() + addMinutes * 60 * 1000);
-    const h = String(expectedDate.getHours()).padStart(2, '0');
-    const m = String(expectedDate.getMinutes()).padStart(2, '0');
-    const s = String(expectedDate.getSeconds()).padStart(2, '0');
-    return h + ":" + m + ":" + s;
-  } catch (e) {
-    return null;
-  }
+  const expectedDate = new Date(actualDate.getTime() + addMinutes * 60 * 1000);
+  const h = String(expectedDate.getHours()).padStart(2, '0');
+  const m = String(expectedDate.getMinutes()).padStart(2, '0');
+  const s = String(expectedDate.getSeconds()).padStart(2, '0');
+  return `${h}:${m}:${s}`;
 }
 
 function calculateDelayWithPrevious(newNumberFourTimeStr, oldExpectedTimeStr) {
@@ -185,11 +234,11 @@ function calculateDelayWithPrevious(newNumberFourTimeStr, oldExpectedTimeStr) {
     if (!newNumberFourTimeStr || !oldExpectedTimeStr) return null;
 
     const now = new Date();
-    const datePart = now.getFullYear() + "/" + String(now.getMonth() + 1).padStart(2, '0') + "/" + String(now.getDate()).padStart(2, '0');
+    const datePart = `${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, '0')}/${String(now.getDate()).padStart(2, '0')}`;
     const newFormatted = formatTimeWithoutDate(newNumberFourTimeStr);
     
-    const realDate = new Date(datePart + " " + newFormatted);
-    const expectedDate = new Date(datePart + " " + oldExpectedTimeStr);
+    const realDate = new Date(`${datePart}${newFormatted}`);
+    const expectedDate = new Date(`${datePart}${oldExpectedTimeStr}`);
 
     if (isNaN(realDate.getTime()) || isNaN(expectedDate.getTime())) return null;
 
@@ -202,15 +251,11 @@ function calculateDelayWithPrevious(newNumberFourTimeStr, oldExpectedTimeStr) {
     const secs = diffSec % 60;
 
     let timeText = "";
-    if (mins > 0 && secs > 0) timeText = mins + " phút " + secs + " giây";
-    else if (mins > 0) timeText = mins + " phút";
-    else timeText = secs + " giây";
+    if (mins > 0 && secs > 0) timeText = `${mins} phút ${secs} giây`;
+    else if (mins > 0) timeText = `${mins} phút`;
+    else timeText = `${secs} giây`;
 
-    if (diffMs > 0) {
-      return "trễ hơn so với dự kiến trước " + timeText;
-    } else {
-      return "sớm hơn so với dự kiến trước " + timeText;
-    }
+    return diffMs > 0 ? `trễ hơn so với dự kiến trước ${timeText}` : `sớm hơn so với dự kiến trước ${timeText}`;
   } catch (e) {
     return null;
   }
@@ -242,8 +287,7 @@ function extractInfo(item) {
 async function sendDiscordEmbed(item) {
   const info = extractInfo(item);
   
-  if (!isTargetBoss(info.bossName)) return;
-  if (!isAllowedPredictionMap(info.mapName)) return;
+  if (!isTargetBoss(info.bossName) || !isAllowedPredictionMap(info.mapName)) return;
 
   let delayComment = null;
   if (isNumberFour(info.bossName) && previousExpectedTimeStr) {
@@ -251,106 +295,94 @@ async function sendDiscordEmbed(item) {
     currentDelayComment = delayComment;
   }
 
-  // PHÁT DỮ LIỆU SANG APP DESKTOP REALTIME
   io.emit('new-boss', {
     bossName: info.bossName,
     mapName: info.mapName,
     serverName: info.serverName,
     timeStr: info.timeStr,
-    timestamp: new Date().getTime(),
-    delayComment: delayComment
+    timestamp: Date.now(),
+    delayComment
   });
 
   const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
   if (webhookUrl) {
     const fields = [
-      { name: "⚔️ Tên Boss", value: "**" + info.bossName + "**", inline: true },
-      { name: "🟟️ Bản đồ", value: "**" + info.mapName + "**", inline: true },
-      { name: "🟟️ Máy chủ", value: "**" + info.serverName + "**", inline: true },
-      { name: "⏰ Thời gian ra", value: "`" + info.timeStr + "`", inline: false }
+      { name: "⚔️ Tên Boss", value: `**${info.bossName}**`, inline: true },
+      { name: "🟟️ Bản đồ", value: `**${info.mapName}**`, inline: true },
+      { name: "🟟️ Máy chủ", value: `**${info.serverName}**`, inline: true },
+      { name: "⏰ Thời gian ra", value: `\`${info.timeStr}\``, inline: false }
     ];
 
     if (delayComment) {
-      fields.push({ name: "🟟 Đánh giá độ trễ", value: "*(" + delayComment + ")*", inline: false });
+      fields.push({ name: "🟟 Đánh giá độ trễ", value: `*(${delayComment})*`, inline: false });
     }
 
     fields.push({ name: "🟟 Hỗ trợ Zalo", value: "Lỗi thông báo liên hệ Zalo **0366 517 900** (Han Đây)", inline: false });
 
-    const payloadBoss = {
-      username: "Han Ne",
-      avatar_url: "https://i.imgur.com/4M34hi2.png",
-      embeds: [
-        {
+    try {
+      await axios.post(webhookUrl, {
+        username: "Han Ne",
+        avatar_url: "https://i.imgur.com/4M34hi2.png",
+        embeds: [{
           title: "🟟 BOSS TIỂU ĐỘI SÁT THỦ XUẤT HIỆN! 🟟",
           color: 16724736,
-          fields: fields,
+          fields,
           footer: { text: "⚔️ Hệ Thống Báo Boss 15 Sao ⚔️ | Anh Han Bảo Vậy" }
-        }
-      ]
-    };
-
-    try {
-      await axios.post(webhookUrl, payloadBoss);
+        }]
+      });
     } catch (err) {
       console.error("[Discord Error] Lỗi:", err.message);
     }
   }
 
-  if (isCaptain(info.bossName)) {
-    if (lastNumberFourTime && isAllowedPredictionMap(lastNumberFourMap)) {
-      const expectedTimeStr = calculatePredictionCustom(lastNumberFourTime, 15);
-      const expectedSupportTimeStr = calculatePredictionCustom(lastNumberFourTime, 7.5);
-      const formattedNumberFourTime = formatTimeWithoutDate(lastNumberFourTime);
-      const predictionMap = lastNumberFourMap || "Không rõ";
+  if (isCaptain(info.bossName) && lastNumberFourTime && isAllowedPredictionMap(lastNumberFourMap)) {
+    const expectedTimeStr = calculatePredictionCustom(lastNumberFourTime, 15);
+    const expectedSupportTimeStr = calculatePredictionCustom(lastNumberFourTime, 7.5);
+    const formattedNumberFourTime = formatTimeWithoutDate(lastNumberFourTime);
+    const predictionMap = lastNumberFourMap || "Không rõ";
 
-      if (expectedTimeStr) {
-        previousExpectedTimeStr = expectedTimeStr;
+    if (expectedTimeStr) {
+      previousExpectedTimeStr = expectedTimeStr;
 
-        // PHÁT DỮ LIỆU DỰ KIẾN VỀ APP DESKTOP
-        io.emit('new-prediction', {
-          numberFourTime: formattedNumberFourTime,
-          mapName: predictionMap,
-          expectedTime: expectedTimeStr,
-          expectedSupportTime: expectedSupportTimeStr,
-          delayComment: currentDelayComment,
-          timestamp: new Date().getTime()
-        });
+      io.emit('new-prediction', {
+        numberFourTime: formattedNumberFourTime,
+        mapName: predictionMap,
+        expectedTime: expectedTimeStr,
+        expectedSupportTime: expectedSupportTimeStr,
+        delayComment: currentDelayComment,
+        timestamp: Date.now()
+      });
 
-        const predictionFields = [
-          { name: "🟟 Số 4 xuất hiện", value: "`" + formattedNumberFourTime + "`", inline: true },
-          { name: "🟟️ Bản đồ Số 4", value: "**" + predictionMap + "**", inline: true },
-          { name: "⏰ Dự kiến ra tiếp", value: "**" + expectedTimeStr + "**", inline: false },
-          { name: "⏰ Dự kiến hỗ trợ", value: "**" + expectedSupportTimeStr + "**", inline: false }
-        ];
+      const predictionFields = [
+        { name: "🟟 Số 4 xuất hiện", value: `\`${formattedNumberFourTime}\``, inline: true },
+        { name: "🟟️ Bản đồ Số 4", value: `**${predictionMap}**`, inline: true },
+        { name: "⏰ Dự kiến ra tiếp", value: `**${expectedTimeStr}**`, inline: false },
+        { name: "⏰ Dự kiến hỗ trợ", value: `**${expectedSupportTimeStr}**`, inline: false }
+      ];
 
-        if (currentDelayComment) {
-          predictionFields.push({ name: "🟟 Đánh giá độ trễ", value: "*(" + currentDelayComment + ")*", inline: false });
-        }
+      if (currentDelayComment) {
+        predictionFields.push({ name: "🟟 Đánh giá độ trễ", value: `*(${currentDelayComment})*`, inline: false });
+      }
 
-        predictionFields.push({ name: "🟟 Hỗ trợ Zalo", value: "Lỗi thông báo liên hệ Zalo **0366 517 900** (Han Đây)", inline: false });
+      predictionFields.push({ name: "🟟 Hỗ trợ Zalo", value: "Lỗi thông báo liên hệ Zalo **0366 517 900** (Han Đây)", inline: false });
 
-        const payloadPrediction = {
-          username: "Han Ne",
-          avatar_url: "https://i.imgur.com/4M34hi2.png",
-          embeds: [
-            {
-              title: "⏳ THỜI GIAN DỰ KIẾN VÒNG TIẾP THEO ⏳",
-              color: 3447003,
-              fields: predictionFields,
-              footer: { text: "⚔️ Hệ Thống Dự Kiến 15 Sao ⚔️ | Anh Han Bảo Vậy" }
-            }
-          ]
-        };
-
-        if (webhookUrl) {
-          setTimeout(async () => {
-            try {
-              await axios.post(webhookUrl, payloadPrediction);
-            } catch (err) {
-              console.error("[Discord Error Prediction] Lỗi:", err.message);
-            }
-          }, 1000);
-        }
+      if (webhookUrl) {
+        setTimeout(async () => {
+          try {
+            await axios.post(webhookUrl, {
+              username: "Han Ne",
+              avatar_url: "https://i.imgur.com/4M34hi2.png",
+              embeds: [{
+                title: "⏳ THỜI GIAN DỰ KIẾN VÒNG TIẾP THEO ⏳",
+                color: 3447003,
+                fields: predictionFields,
+                footer: { text: "⚔️ Hệ Thống Dự Kiến 15 Sao ⚔️ | Anh Han Bảo Vậy" }
+              }]
+            });
+          } catch (err) {
+            console.error("[Discord Error Prediction] Lỗi:", err.message);
+          }
+        }, 1000);
       }
     }
   }
@@ -367,26 +399,22 @@ async function sendMaintenanceWebhook(item) {
   const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
   if (!webhookUrl) return;
 
-  const maintenancePayload = {
-    username: "millims15",
-    avatar_url: "https://i.imgur.com/4M34hi2.png",
-    embeds: [
-      {
+  try {
+    await axios.post(webhookUrl, {
+      username: "millims15",
+      avatar_url: "https://i.imgur.com/4M34hi2.png",
+      embeds: [{
         title: "🟟️ THÔNG BÁO BẢO TRÌ HỆ THỐNG 🟟️",
         color: 16776960,
         fields: [
-          { name: "🟟️ Máy chủ", value: "**" + serverName + "**", inline: true },
-          { name: "⏰ Thời gian", value: "`" + formattedTime + "`", inline: false },
+          { name: "🟟️ Máy chủ", value: `**${serverName}**`, inline: true },
+          { name: "⏰ Thời gian", value: `\`${formattedTime}\``, inline: false },
           { name: "🟟 Nội dung", value: String(contentText), inline: false },
           { name: "🟟 Hỗ trợ Zalo", value: "Lỗi thông báo liên hệ Zalo **0366 517 900** (Han Đây)", inline: false }
         ],
         footer: { text: "⚔️ Hệ Thống Báo Boss 15 Sao ⚔️ | Anh Han Bảo Vậy" }
-      }
-    ]
-  };
-
-  try {
-    await axios.post(webhookUrl, maintenancePayload);
+      }]
+    });
   } catch (err) {
     console.error("[Discord Error Maintenance] Lỗi:", err.message);
   }
@@ -404,30 +432,34 @@ async function sendDivineItemWebhook(item) {
   const webhookUrl = process.env.DISCORD_WEBHOOK_URL_2 || process.env.DISCORD_WEBHOOK_URL;
   if (!webhookUrl) return;
 
-  const divinePayload = {
-    username: "millims15",
-    avatar_url: "https://i.imgur.com/4M34hi2.png",
-    embeds: [
-      {
+  try {
+    await axios.post(webhookUrl, {
+      username: "millims15",
+      avatar_url: "https://i.imgur.com/4M34hi2.png",
+      embeds: [{
         title: "✨ THÔNG BÁO RƠI ĐỒ THẦN LINH ✨",
         color: 65535,
         fields: [
-          { name: "🟟️ Máy chủ", value: "**" + serverName + "**", inline: true },
-          { name: "🟟 Người chơi", value: "**" + player + "**", inline: true },
-          { name: "🟟️ Trang bị", value: "**" + equipmentName + "**", inline: false },
-          { name: "🟟️ Bản đồ", value: "**" + mapName + "**", inline: false },
-          { name: "⏰ Thời gian", value: "`" + rawTime + "`", inline: false },
+          { name: "🟟️ Máy chủ", value: `**${serverName}**`, inline: true },
+          { name: "🟟 Người chơi", value: `**${player}**`, inline: true },
+          { name: "🟟️ Trang bị", value: `**${equipmentName}**`, inline: false },
+          { name: "🟟️ Bản đồ", value: `**${mapName}**`, inline: false },
+          { name: "⏰ Thời gian", value: `\`${rawTime}\``, inline: false },
           { name: "🟟 Hỗ trợ Zalo", value: "Lỗi thông báo liên hệ Zalo **0366 517 900** (Han Đây)", inline: false }
         ],
         footer: { text: "⚔️ Hệ Thống Báo Đồ Thần Linh 15 Sao ⚔️ | Anh Han Bảo Vậy" }
-      }
-    ]
-  };
-
-  try {
-    await axios.post(webhookUrl, divinePayload);
+      }]
+    });
   } catch (err) {
     console.error("[Discord Error Divine Item] Lỗi:", err.message);
+  }
+}
+
+// Cắt tỉa Set để tránh tràn bộ nhớ
+function cleanupSet(setInstance, maxSize = 800, keepSize = 400) {
+  if (setInstance.size > maxSize) {
+    const arr = Array.from(setInstance);
+    arr.slice(0, arr.length - keepSize).forEach(id => setInstance.delete(id));
   }
 }
 
@@ -443,7 +475,7 @@ async function fetchBossApi() {
     if (Array.isArray(listData)) {
       if (!isBaselineLoaded) {
         listData.forEach(item => {
-          const id = item.id || (item.bossName || item.title) + "_" + item.time;
+          const id = item.id || `${item.bossName || item.title}_${item.time}`;
           processedIds.add(id);
 
           const category = String(item.category || item.type || "").toLowerCase();
@@ -451,14 +483,14 @@ async function fetchBossApi() {
           
           if (category.includes('bảo trì') || contentStr.includes('bảo trì')) {
             const minuteKey = formatTimeWithoutDate(item.time || "");
-            processedMaintenanceIds.add("maint_" + (item.id || minuteKey));
+            processedMaintenanceIds.add(`maint_${item.id || minuteKey}`);
           }
         });
         isBaselineLoaded = true;
       } else {
         const newItems = [];
         for (const item of listData) {
-          const id = item.id || (item.bossName || item.title) + "_" + item.time;
+          const id = item.id || `${item.bossName || item.title}_${item.time}`;
           const isServer15 = !item.server || String(item.server).includes('15');
           if (!processedIds.has(id) && isServer15) {
             processedIds.add(id);
@@ -473,14 +505,14 @@ async function fetchBossApi() {
           if (category.includes('bảo trì') || contentStr.includes('bảo trì')) {
             const rawTime = newItem.time || "";
             const minuteKey = formatTimeWithoutDate(rawTime);
-            const maintId = "maint_" + (newItem.id || minuteKey);
+            const maintId = `maint_${newItem.id || minuteKey}`;
 
             if (!processedMaintenanceIds.has(maintId)) {
               processedMaintenanceIds.add(maintId);
               await sendMaintenanceWebhook(newItem);
             }
           } else if (isDivineItem(newItem)) {
-            const divineId = "divine_" + (newItem.id || newItem.time);
+            const divineId = `divine_${newItem.id || newItem.time}`;
             if (!processedItemIds.has(divineId)) {
               processedItemIds.add(divineId);
               await sendDivineItemWebhook(newItem);
@@ -492,23 +524,23 @@ async function fetchBossApi() {
       }
     }
 
-    if (processedIds.size > 800) {
-      const arr = Array.from(processedIds);
-      arr.slice(0, arr.length - 400).forEach(id => processedIds.delete(id));
-    }
+    // Dọn dẹp bộ nhớ định kỳ cho cả 3 Sets
+    cleanupSet(processedIds);
+    cleanupSet(processedMaintenanceIds);
+    cleanupSet(processedItemIds);
 
   } catch (error) {
     console.error('[API Fetch Error]:', error.message);
+  } finally {
+    // Đảm bảo không bị đè request liên tục
+    setTimeout(fetchBossApi, 5000);
   }
 }
-
-setInterval(fetchBossApi, 5000);
 
 app.get('/', (req, res) => {
   res.send('Boss & Maintenance & Divine Item Monitor Service is running...');
 });
 
-const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log("Server đang chạy tại port " + PORT);
   fetchBossApi();
