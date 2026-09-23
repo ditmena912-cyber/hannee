@@ -20,8 +20,8 @@ const users = new Map();
 const transactions = new Map();  
 let historyColumns = [];         
 
-// Biến lưu tỷ lệ thắng chung của toàn hệ thống (mặc định là null, nếu set sẽ áp dụng cho tất cả)
-let globalWinRateMultiplier = null; 
+// Biến điều chỉnh tỷ lệ thắng gian lận ẩn (null = ngẫu nhiên tự nhiên, hoặc nhận giá trị từ 0.0 đến 1.0 tương ứng 0% đến 100%)
+let forcedWinRate = null; 
 
 let currentGame = {
     gameId: 1,
@@ -46,7 +46,6 @@ function getOrCreateUser(discordId, username = 'User') {
             total_loss: 0,
             total_bet_amount: 0,
             games_played: 0,
-            customMultiplier: null, // Tỷ lệ riêng cho từng user (nếu có)
             txHistory: [], 
             created_at: new Date()
         });
@@ -99,7 +98,45 @@ function renderBoardString() {
     return rows.join('\n');
 }
 
-function rollDice() {
+// Hàm lắc xúc xắc có can thiệp tỉ lệ thắng của admin nếu được thiết lập
+function rollDiceWithControl() {
+    // Nếu admin có set tỷ lệ thắng (ví dụ 20% tức 0.2)
+    if (forcedWinRate !== null && currentGame.betsThisRound.size > 0) {
+        const rollCheck = Math.random(); // Số từ 0.0 đến 1.0
+        
+        // Thống kê xem người chơi đang cược nhiều vào cửa nào nhiều nhất để ép kết quả theo ý admin
+        let taiAmount = 0;
+        let xiuAmount = 0;
+        for (let bet of currentGame.betsThisRound.values()) {
+            if (bet.choice === 'TAI') taiAmount += bet.amount;
+            if (bet.choice === 'XIU') xiuAmount += bet.amount;
+        }
+
+        // Quyết định xem ván này người chơi có được thắng hay không dựa trên forcedWinRate
+        const playerShouldWin = rollCheck <= forcedWinRate;
+        
+        // Xác định cửa thắng cho người chơi
+        let targetResult = 'TAI';
+        if (taiAmount > xiuAmount) {
+            targetResult = playerShouldWin ? 'TAI' : 'XIU';
+        } else {
+            targetResult = playerShouldWin ? 'XIU' : 'TAI';
+        }
+
+        // Tạo xúc xắc khớp với kết quả targetResult
+        let dice1, dice2, dice3, totalSum, result;
+        do {
+            dice1 = Math.floor(Math.random() * 6) + 1;
+            dice2 = Math.floor(Math.random() * 6) + 1;
+            dice3 = Math.floor(Math.random() * 6) + 1;
+            totalSum = dice1 + dice2 + dice3;
+            result = (dice1 === dice2 && dice2 === dice3) ? 'HOA' : (totalSum >= 11 ? 'TAI' : 'XIU');
+        } while (result !== targetResult && result !== 'HOA'); // Tránh bão trừ khi bắt buộc, ưu tiên đúng cửa TAI/XIU
+
+        return { dice1, dice2, dice3, totalSum, result };
+    }
+
+    // Mặc định lắc xúc xắc tự nhiên hoàn toàn
     const dice1 = Math.floor(Math.random() * 6) + 1;
     const dice2 = Math.floor(Math.random() * 6) + 1;
     const dice3 = Math.floor(Math.random() * 6) + 1;
@@ -189,7 +226,7 @@ setInterval(async () => {
                 await msg.edit({ embeds: [embedLock], components: [] }).catch(() => {});
 
                 setTimeout(async () => {
-                    const roll = rollDice();
+                    const roll = rollDiceWithControl();
                     updateScoreBoard(roll.result);
 
                     let winnersList = [];
@@ -214,17 +251,12 @@ setInterval(async () => {
                         };
 
                         if (bet.choice === roll.result) {
-                            // Ưu tiên tỷ lệ riêng của user -> Nếu không có thì dùng tỷ lệ chung toàn cục (globalWinRateMultiplier) -> Nếu không có nữa dùng mặc định 1.95
-                            const defaultMultiplier = (roll.result === 'HOA' ? 8 : 1.95);
-                            let activeMultiplier = defaultMultiplier;
+                            // Tỷ lệ thưởng: Tài ăn 1.9 (nhân 1.9), Xỉu ăn 2.0 (nhân 2.0), Hòa/Bão ăn 8
+                            let multiplier = 1.9;
+                            if (bet.choice === 'XIU') multiplier = 2.0;
+                            if (roll.result === 'HOA') multiplier = 8.0;
 
-                            if (user.customMultiplier !== null && roll.result !== 'HOA') {
-                                activeMultiplier = user.customMultiplier;
-                            } else if (globalWinRateMultiplier !== null && roll.result !== 'HOA') {
-                                activeMultiplier = globalWinRateMultiplier;
-                            }
-                            
-                            let reward = Math.floor(bet.amount * activeMultiplier);
+                            let reward = Math.floor(bet.amount * multiplier);
                             user.balance += reward;
                             let profit = reward - bet.amount;
                             user.total_win += profit;
@@ -277,69 +309,45 @@ client.on('messageCreate', async (message) => {
     if (cmd === '!sodu') return message.reply('💰 Số dư: **' + user.balance.toLocaleString() + ' vàng**');
     if (cmd === '!cau') return message.reply('📊 Bảng Cầu Tài Xỉu (🔴 Tài | 🔵 Xỉu | 🟡 Bão):\n' + renderBoardString());
 
-    // LỆNH ADMIN ẨN CHỈNH TỶ LỆ (Cho toàn bộ hoặc cho từng người chơi)
-    // Cú pháp 1 (Toàn cục): !settyle all 20%  hoặc  !settyle all 0.2  (hoặc reset bằng !settyle all reset)
-    // Cú pháp 2 (Cá nhân):   !settyle @User 20% hoặc  !settyle @User 0.2 (hoặc reset bằng !settyle @User reset)
-    if (cmd === '!settyle') {
+    // LỆNH ADMIN ĐIỀU CHỈNH TỈ LỆ THẮNG (ẨN HOÀN TOÀN)
+    // Cú pháp: !setwinrate [10% / 20% / 80% / 0.1 / 0.2 / 0.8] hoặc !setwinrate reset
+    if (cmd === '!setwinrate') {
         if (!isAdmin(message.author.id)) return message.reply({ content: '❌ Bạn không có quyền sử dụng lệnh này!', ephemeral: true });
         
-        const targetArg = args[1];
-        const valueArg = args[2];
+        const valueArg = args[1];
+        try { await message.delete(); } catch (e) {} // Xóa tin nhắn lệnh của admin để bảo mật
 
-        if (!targetArg || !valueArg) {
+        if (!valueArg) {
             return message.reply({ 
-                content: '⚠️ **Cú pháp hướng dẫn:**\n' +
-                         '• Chỉnh toàn bộ người chơi: `!settyle all [phần trăm hoặc hệ số]` (VD: `!settyle all 20%` hoặc `!settyle all 0.2` hoặc `!settyle all reset`)\n' +
-                         '• Chỉnh riêng cá nhân: `!settyle @User [hệ số]` (VD: `!settyle @User 1.5` hoặc `!settyle @User reset`)', 
+                content: '⚠️ **Cú pháp hướng dẫn:** `!setwinrate [tỷ lệ thắng]`\n' +
+                         '• Chỉnh tỷ lệ thắng xuống 10%: `!setwinrate 10%` (hoặc `0.1`)\n' +
+                         '• Chỉnh tỷ lệ thắng xuống 20%: `!setwinrate 20%` (hoặc `0.2`)\n' +
+                         '• Chỉnh tỷ lệ thắng thành 80%: `!setwinrate 80%` (hoặc `0.8`)\n' +
+                         '• Tắt (về ngẫu nhiên tự nhiên): `!setwinrate reset`', 
                 ephemeral: true 
             });
         }
 
-        // Xử lý giá trị (hỗ trợ nhập dạng "20%" hoặc "0.2")
-        let parsedValue = null;
-        if (valueArg.toLowerCase() !== 'reset') {
-            if (valueArg.endsWith('%')) {
-                const num = parseFloat(valueArg.replace('%', ''));
-                if (!isNaN(num)) parsedValue = num / 100;
-            } else {
-                parsedValue = parseFloat(valueArg);
-            }
-            if (isNaN(parsedValue) || parsedValue < 0) {
-                return message.reply({ content: '❌ Giá trị tỷ lệ không hợp lệ!', ephemeral: true });
-            }
+        if (valueArg.toLowerCase() === 'reset') {
+            forcedWinRate = null;
+            return message.reply({ content: '🔒 [ẨN ADMIN] Đã **reset** tỉ lệ thắng về mặc định (Ngẫu nhiên tự nhiên).', ephemeral: true });
         }
 
-        // Xử lý cho TOÀN CỤC (all)
-        if (targetArg.toLowerCase() === 'all') {
-            try { await message.delete(); } catch (e) {}
-            if (valueArg.toLowerCase() === 'reset') {
-                globalWinRateMultiplier = null;
-                return message.reply({ content: '🔒 [ẨN ADMIN] Đã **reset** tỷ lệ thắng toàn cục về mặc định (1.95).', ephemeral: true });
-            } else {
-                globalWinRateMultiplier = parsedValue;
-                const percentDisplay = (parsedValue * 100) + '%';
-                return message.reply({ content: '🔒 [ẨN ADMIN] Đã chỉnh tỷ lệ thắng của **TẤT CẢ người chơi** thành **x' + parsedValue + ' (' + percentDisplay + ')** thành công!', ephemeral: true });
-            }
-        } 
-        
-        // Xử lý cho CÁ NHÂN (@User)
-        else {
-            const target = message.mentions.users.first();
-            try { await message.delete(); } catch (e) {}
-
-            if (!target) {
-                return message.reply({ content: '⚠️ Không tìm thấy người chơi được nhắc đến!', ephemeral: true });
-            }
-
-            const targetUser = getOrCreateUser(target.id, target.username);
-            if (valueArg.toLowerCase() === 'reset') {
-                targetUser.customMultiplier = null;
-                return message.reply({ content: '🔒 [ẨN ADMIN] Đã reset tỷ lệ riêng của **' + target.username + '** về mặc định.', ephemeral: true });
-            } else {
-                targetUser.customMultiplier = parsedValue;
-                return message.reply({ content: '🔒 [ẨN ADMIN] Đã chỉnh tỷ lệ thắng riêng của **' + target.username + '** thành **x' + parsedValue + '** thành công!', ephemeral: true });
-            }
+        let parsedRate = null;
+        if (valueArg.endsWith('%')) {
+            const num = parseFloat(valueArg.replace('%', ''));
+            if (!isNaN(num)) parsedRate = num / 100;
+        } else {
+            parsedRate = parseFloat(valueArg);
         }
+
+        if (isNaN(parsedRate) || parsedRate < 0 || parsedRate > 1) {
+            return message.reply({ content: '❌ Tỷ lệ không hợp lệ! Vui lòng nhập từ `0%` đến `100%` (hoặc `0.0` đến `1.0`).', ephemeral: true });
+        }
+
+        forcedWinRate = parsedRate;
+        const percentStr = (parsedRate * 100) + '%';
+        return message.reply({ content: '🔒 [ẨN ADMIN] Đã chỉnh tỉ lệ thắng của người chơi thành **' + percentStr + '** cho các ván tiếp theo thành công!', ephemeral: true });
     }
 
     if (cmd === '!lichsu' || cmd === '!thongke') {
