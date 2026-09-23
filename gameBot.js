@@ -1,6 +1,6 @@
 // gameBot.js - File riêng chạy độc lập cho bot Minigame
 const { Client, GatewayIntentBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, Events } = require('discord.js');
-const { token } = require('./config.json');
+const token = process.env.TOKEN;
 const { playBaccarat } = require('./gameLogic');
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
