@@ -403,3 +403,6 @@ app.listen(PORT, () => {
 });
 // --- Code thông báo boss / bảo trì cũ của bạn ở phía trên ---
 // ...
+// Khởi chạy tính năng nhiệm vụ từ file nhiemvu.js
+const { setupNhiemVu } = require('./nhiemvu.js');
+setupNhiemVu(client, BOT_TOKEN);
